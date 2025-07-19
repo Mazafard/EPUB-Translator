@@ -209,15 +209,35 @@ func (p *Parser) extractChapters(epub *EPUB) error {
 		// Rewrite media URLs in the content
 		rewrittenContent := p.rewriteMediaURLs(content, epub.ID, packageDirRelative)
 
+		// Check for translated content in the _translated folder
+		translatedContent := ""
+		isTranslated := false
+
+		// Check if there's a translated version of this chapter
+		translatedDir := filepath.Join(p.tempDir, epub.ID+"_translated")
+		translatedChapterPath := filepath.Join(translatedDir, filepath.Dir(epub.Package.OriginalPath), item.Href)
+
+		if _, err := os.Stat(translatedChapterPath); err == nil {
+			// Translated file exists, load it
+			if translatedFileContent, err := p.extractChapterContent(translatedChapterPath); err == nil {
+				translatedContent = p.rewriteMediaURLs(translatedFileContent, epub.ID, packageDirRelative)
+				isTranslated = true
+				p.logger.Debugf("Loaded translated content for chapter: %s", translatedChapterPath)
+			} else {
+				p.logger.Warnf("Failed to load translated content from %s: %v", translatedChapterPath, err)
+			}
+		}
+
 		chapter := Chapter{
-			ID:           fmt.Sprintf("%s_%d", epub.ID, order),
-			Title:        p.extractTitle(content), // Use original content for title extraction
-			FilePath:     chapterPath,
-			RelativePath: item.Href,
-			Content:      rewrittenContent, // Use rewritten content for display
-			Order:        order,
-			WordCount:    countWords(content), // Use original content for word count
-			IsTranslated: false,
+			ID:                fmt.Sprintf("%s_%d", epub.ID, order),
+			Title:             p.extractTitle(content), // Use original content for title extraction
+			FilePath:          chapterPath,
+			RelativePath:      item.Href,
+			Content:           rewrittenContent, // Use rewritten content for display
+			TranslatedContent: translatedContent,
+			Order:             order,
+			WordCount:         countWords(content), // Use original content for word count
+			IsTranslated:      isTranslated,
 		}
 
 		epub.Chapters = append(epub.Chapters, chapter)
@@ -452,13 +472,13 @@ func (p *Parser) copyFile(src, dst string) error {
 	return os.Chmod(dst, srcInfo.Mode())
 }
 
-// SaveTranslatedChapter saves a translated chapter to the translated EPUB directory
-func (p *Parser) SaveTranslatedChapter(epubID, chapterPath, translatedContent string) error {
-	translatedDir := filepath.Join(p.tempDir, epubID+"_translated")
+// SaveTranslatedChapter saves a translated chapter to the language-specific translated EPUB directory
+func (p *Parser) SaveTranslatedChapter(epubID, chapterPath, translatedContent, targetLang string) error {
+	translatedDir := filepath.Join(p.tempDir, fmt.Sprintf("%s_translated_%s", epubID, targetLang))
 
 	// Ensure translated directory exists
 	if _, err := os.Stat(translatedDir); os.IsNotExist(err) {
-		if _, err := p.CreateTranslatedCopy(epubID); err != nil {
+		if _, err := p.CreateTranslatedCopyWithLanguage(epubID, targetLang); err != nil {
 			return fmt.Errorf("failed to create translated copy: %w", err)
 		}
 	}
@@ -483,8 +503,8 @@ func (p *Parser) SaveTranslatedChapter(epubID, chapterPath, translatedContent st
 		return fmt.Errorf("failed to read original file: %w", err)
 	}
 
-	// Replace the body content with translated content
-	translatedFullContent, err := p.replaceBodyContent(string(originalContent), translatedContent)
+	// Replace the body content with translated content and apply language-specific styling
+	translatedFullContent, err := p.replaceBodyContentWithLanguageSupport(string(originalContent), translatedContent, targetLang)
 	if err != nil {
 		return fmt.Errorf("failed to replace body content: %w", err)
 	}
@@ -494,7 +514,7 @@ func (p *Parser) SaveTranslatedChapter(epubID, chapterPath, translatedContent st
 		return fmt.Errorf("failed to write translated file: %w", err)
 	}
 
-	p.logger.Debugf("Successfully saved translated chapter: %s", translatedFilePath)
+	p.logger.Debugf("Successfully saved translated chapter for language %s: %s", targetLang, translatedFilePath)
 	return nil
 }
 
@@ -521,4 +541,556 @@ func (p *Parser) replaceBodyContent(originalHTML, newBodyContent string) (string
 	}
 
 	return html, nil
+}
+
+// CreateTranslatedCopyWithLanguage creates a language-specific copy of the EPUB directory for storing translations
+func (p *Parser) CreateTranslatedCopyWithLanguage(epubID, targetLang string) (string, error) {
+	sourceDir := filepath.Join(p.tempDir, epubID)
+	translatedDir := filepath.Join(p.tempDir, fmt.Sprintf("%s_translated_%s", epubID, targetLang))
+
+	// Check if source directory exists
+	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
+		return "", fmt.Errorf("source EPUB directory not found: %s", sourceDir)
+	}
+
+	// Check if translated directory already exists
+	if _, err := os.Stat(translatedDir); err == nil {
+		p.logger.Debugf("Translated directory for language %s already exists: %s", targetLang, translatedDir)
+		return translatedDir, nil
+	}
+
+	p.logger.Debugf("Creating translated copy for language %s: %s -> %s", targetLang, sourceDir, translatedDir)
+
+	// Copy the entire directory
+	if err := p.copyDir(sourceDir, translatedDir); err != nil {
+		return "", fmt.Errorf("failed to copy EPUB directory: %w", err)
+	}
+
+	// Copy language-specific fonts if needed
+	if err := p.copyLanguageFonts(translatedDir, targetLang); err != nil {
+		p.logger.Warnf("Failed to copy language-specific fonts: %v", err)
+	}
+
+	// Inject language-specific CSS into existing CSS files
+	if err := p.injectLanguageCSS(translatedDir, targetLang); err != nil {
+		p.logger.Warnf("Failed to inject language-specific CSS: %v", err)
+	}
+
+	p.logger.Debugf("Successfully created translated copy for language %s: %s", targetLang, translatedDir)
+	return translatedDir, nil
+}
+
+// replaceBodyContentWithLanguageSupport replaces body content with language-specific styling
+func (p *Parser) replaceBodyContentWithLanguageSupport(originalHTML, newBodyContent, targetLang string) (string, error) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(originalHTML))
+	if err != nil {
+		return "", err
+	}
+
+	// Check if target language is RTL
+	isRTL := p.isRTLLanguage(targetLang)
+
+	// Find or create the head element to add language-specific CSS
+	head := doc.Find("head")
+	if head.Length() == 0 {
+		// If no head tag, create one
+		doc.Find("html").PrependHtml("<head></head>")
+		head = doc.Find("head")
+	}
+
+	// Add language-specific CSS link
+	cssLink := fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="styles/language_%s.css">`, targetLang)
+	head.AppendHtml(cssLink)
+
+	// Add inline CSS for immediate RTL support if needed
+	if isRTL {
+		var fontFamily string
+		if targetLang == "fa" {
+			fontFamily = `"Vazirmatn", "Noto Sans", "Iranian Sans", "Tahoma", Arial, sans-serif`
+		} else {
+			fontFamily = `"Noto Sans", "Iranian Sans", "Tahoma", Arial, sans-serif`
+		}
+
+		rtlCSS := fmt.Sprintf(`<style type="text/css">
+body {
+    direction: rtl;
+    text-align: right;
+    unicode-bidi: embed;
+    font-family: %s;
+    line-height: 1.8;
+}
+
+p, div, span, h1, h2, h3, h4, h5, h6, li, td, th {
+    direction: rtl;
+    text-align: right;
+}
+
+table {
+    direction: rtl;
+}
+
+th, td {
+    text-align: right;
+}
+
+.rtl-content {
+    direction: rtl;
+    text-align: right;
+    unicode-bidi: embed;
+}
+</style>`, fontFamily)
+		head.AppendHtml(rtlCSS)
+	}
+
+	// Set html element attributes
+	html := doc.Find("html")
+	if html.Length() > 0 {
+		html.SetAttr("lang", targetLang)
+		if isRTL {
+			html.SetAttr("dir", "rtl")
+		} else {
+			html.SetAttr("dir", "ltr")
+		}
+	}
+
+	// Find the body element and replace its content
+	body := doc.Find("body")
+	if body.Length() > 0 {
+		if isRTL {
+			// Add RTL attributes to body
+			body.SetAttr("dir", "rtl")
+			body.SetAttr("lang", targetLang)
+			body.AddClass("rtl-content")
+		} else {
+			// Ensure LTR for non-RTL languages
+			body.SetAttr("dir", "ltr")
+			body.SetAttr("lang", targetLang)
+			body.RemoveClass("rtl-content")
+		}
+		body.SetHtml(newBodyContent)
+	} else {
+		// If no body tag, wrap the new content with language attributes
+		if isRTL {
+			return fmt.Sprintf(`<div dir="rtl" lang="%s" class="rtl-content">%s</div>`, targetLang, newBodyContent), nil
+		}
+		return fmt.Sprintf(`<div dir="ltr" lang="%s">%s</div>`, targetLang, newBodyContent), nil
+	}
+
+	// Return the complete HTML document
+	htmlContent, err := doc.Html()
+	if err != nil {
+		return "", err
+	}
+
+	return htmlContent, nil
+}
+
+// isRTLLanguage checks if a language code represents a right-to-left language
+func (p *Parser) isRTLLanguage(languageCode string) bool {
+	rtlLanguages := map[string]bool{
+		"ar": true, // Arabic
+		"fa": true, // Persian/Farsi
+		"he": true, // Hebrew
+		"ur": true, // Urdu
+		"yi": true, // Yiddish
+		"ji": true, // Yiddish (alternative code)
+		"iw": true, // Hebrew (alternative code)
+		"ku": true, // Kurdish
+		"ps": true, // Pashto
+		"sd": true, // Sindhi
+	}
+	return rtlLanguages[strings.ToLower(languageCode)]
+}
+
+// injectLanguageCSS finds existing CSS files in the EPUB and injects language-specific styles
+func (p *Parser) injectLanguageCSS(translatedDir, targetLang string) error {
+	// Find all CSS files in the EPUB directory
+	cssFiles, err := p.findCSSFiles(translatedDir)
+	if err != nil {
+		return fmt.Errorf("failed to find CSS files: %w", err)
+	}
+
+	if len(cssFiles) == 0 {
+		p.logger.Warnf("No CSS files found in EPUB, creating default stylesheet")
+		return p.createDefaultStylesheet(translatedDir, targetLang)
+	}
+
+	// Generate language-specific CSS content
+	languageCSS := p.generateLanguageCSS(targetLang)
+
+	// Inject language CSS into existing CSS files
+	for _, cssFile := range cssFiles {
+		if err := p.injectCSSIntoFile(cssFile, languageCSS, targetLang); err != nil {
+			p.logger.Warnf("Failed to inject CSS into %s: %v", cssFile, err)
+			continue
+		}
+		p.logger.Debugf("Successfully injected %s language styles into: %s", targetLang, cssFile)
+	}
+
+	return nil
+}
+
+// findCSSFiles recursively finds all CSS files in the EPUB directory
+func (p *Parser) findCSSFiles(dir string) ([]string, error) {
+	var cssFiles []string
+
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories and non-CSS files
+		if info.IsDir() {
+			return nil
+		}
+
+		// Check for CSS files
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext == ".css" {
+			cssFiles = append(cssFiles, path)
+		}
+
+		return nil
+	})
+
+	return cssFiles, err
+}
+
+// generateLanguageCSS creates the CSS content for a specific language
+func (p *Parser) generateLanguageCSS(targetLang string) string {
+	if p.isRTLLanguage(targetLang) {
+		// RTL CSS content
+		cssContent := `
+/* RTL Language Support - Auto-injected for ` + targetLang + ` */
+body {
+    direction: rtl !important;
+    text-align: right !important;
+    unicode-bidi: embed !important;
+}
+
+p, div, span, h1, h2, h3, h4, h5, h6, li, td, th, blockquote {
+    direction: rtl !important;
+    text-align: right !important;
+    unicode-bidi: embed !important;
+}
+
+/* Table support */
+table {
+    direction: rtl !important;
+}
+
+th, td {
+    text-align: right !important;
+}
+
+/* List support */
+ul, ol {
+    direction: rtl !important;
+    text-align: right !important;
+}
+
+li {
+    text-align: right !important;
+}
+
+/* Quote and emphasis support */
+blockquote {
+    border-right: 4px solid #ccc !important;
+    border-left: none !important;
+    padding-right: 1em !important;
+    padding-left: 0 !important;
+    margin-right: 0 !important;
+    margin-left: 1em !important;
+}
+
+/* Text alignment utilities */
+.text-left { text-align: right !important; }
+.text-right { text-align: left !important; }
+.text-center { text-align: center !important; }
+
+/* Float adjustments */
+.float-left { float: right !important; }
+.float-right { float: left !important; }
+
+/* Margin and padding adjustments */
+.margin-left { margin-right: inherit !important; margin-left: 0 !important; }
+.margin-right { margin-left: inherit !important; margin-right: 0 !important; }
+.padding-left { padding-right: inherit !important; padding-left: 0 !important; }
+.padding-right { padding-left: inherit !important; padding-right: 0 !important; }
+`
+
+		// Add language-specific font families
+		switch targetLang {
+		case "fa":
+			cssContent += `
+/* Persian/Farsi specific fonts */
+@import url('fonts/vazirmatn.css');
+
+body, p, div, span, h1, h2, h3, h4, h5, h6 {
+    font-family: "Vazirmatn", "Noto Sans", "Iranian Sans", "B Nazanin", "Tahoma", Arial, sans-serif !important;
+}
+`
+		case "ar":
+			cssContent += `
+/* Arabic specific fonts */
+body, p, div, span, h1, h2, h3, h4, h5, h6 {
+    font-family: "Noto Sans Arabic", "Arabic UI Text", "Tahoma", Arial, sans-serif !important;
+}
+`
+		case "he":
+			cssContent += `
+/* Hebrew specific fonts */
+body, p, div, span, h1, h2, h3, h4, h5, h6 {
+    font-family: "Noto Sans Hebrew", "Hebrew UI Text", "David", "Tahoma", Arial, sans-serif !important;
+}
+`
+		}
+
+		return cssContent
+	}
+
+	// LTR CSS content (minimal, mainly for consistency)
+	return `
+/* LTR Language Support - Auto-injected for ` + targetLang + ` */
+body {
+    direction: ltr !important;
+    text-align: left !important;
+    unicode-bidi: embed !important;
+}
+
+p, div, span, h1, h2, h3, h4, h5, h6, li, td, th, blockquote {
+    direction: ltr !important;
+    text-align: left !important;
+    unicode-bidi: embed !important;
+}
+
+table {
+    direction: ltr !important;
+}
+
+th, td {
+    text-align: left !important;
+}
+
+ul, ol {
+    direction: ltr !important;
+    text-align: left !important;
+}
+
+li {
+    text-align: left !important;
+}
+
+blockquote {
+    border-left: 4px solid #ccc !important;
+    border-right: none !important;
+    padding-left: 1em !important;
+    padding-right: 0 !important;
+    margin-left: 0 !important;
+    margin-right: 1em !important;
+}
+`
+}
+
+// injectCSSIntoFile injects CSS content into an existing CSS file
+func (p *Parser) injectCSSIntoFile(cssFilePath, languageCSS, targetLang string) error {
+	// Read existing CSS content
+	existingContent, err := os.ReadFile(cssFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to read CSS file: %w", err)
+	}
+
+	existingCSS := string(existingContent)
+
+	// Check if language-specific CSS is already injected
+	marker := fmt.Sprintf("/* RTL Language Support - Auto-injected for %s */", targetLang)
+	if strings.Contains(existingCSS, marker) {
+		p.logger.Debugf("Language CSS already exists in %s, skipping injection", cssFilePath)
+		return nil
+	}
+
+	// Remove any previous language injections
+	existingCSS = p.removePreviousLanguageInjections(existingCSS)
+
+	// Append the new language CSS
+	newContent := existingCSS + "\n" + languageCSS
+
+	// Write the updated CSS file
+	if err := os.WriteFile(cssFilePath, []byte(newContent), 0644); err != nil {
+		return fmt.Errorf("failed to write updated CSS file: %w", err)
+	}
+
+	return nil
+}
+
+// removePreviousLanguageInjections removes any previously injected language CSS
+func (p *Parser) removePreviousLanguageInjections(cssContent string) string {
+	// Pattern to match previously injected language CSS blocks
+	startMarker := "/* RTL Language Support - Auto-injected for"
+	endMarker := "/* End RTL Language Support */"
+
+	for {
+		startIdx := strings.Index(cssContent, startMarker)
+		if startIdx == -1 {
+			break
+		}
+
+		// Find the end of this injection block or the start of the next one
+		remaining := cssContent[startIdx:]
+		endIdx := strings.Index(remaining, endMarker)
+
+		var nextStartIdx int
+		if nextStart := strings.Index(remaining[1:], startMarker); nextStart != -1 {
+			nextStartIdx = nextStart + 1
+		} else {
+			nextStartIdx = -1
+		}
+
+		var cutEnd int
+		if endIdx != -1 && (nextStartIdx == -1 || endIdx < nextStartIdx) {
+			// Found proper end marker
+			cutEnd = startIdx + endIdx + len(endMarker)
+		} else if nextStartIdx != -1 {
+			// No end marker, but found next start marker
+			cutEnd = startIdx + nextStartIdx
+		} else {
+			// No end marker and no next start, remove to end of file
+			cutEnd = len(cssContent)
+		}
+
+		// Remove the injection block
+		cssContent = cssContent[:startIdx] + cssContent[cutEnd:]
+	}
+
+	return cssContent
+}
+
+// createDefaultStylesheet creates a default CSS file if none exist
+func (p *Parser) createDefaultStylesheet(translatedDir, targetLang string) error {
+	// Create a styles directory
+	stylesDir := filepath.Join(translatedDir, "styles")
+	if err := os.MkdirAll(stylesDir, 0755); err != nil {
+		return fmt.Errorf("failed to create styles directory: %w", err)
+	}
+
+	// Create default CSS file
+	cssFilePath := filepath.Join(stylesDir, "default.css")
+	languageCSS := p.generateLanguageCSS(targetLang)
+
+	defaultCSS := `/* Default EPUB Stylesheet */
+body {
+    font-family: serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 1em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-weight: bold;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+}
+
+p {
+    margin-bottom: 1em;
+}
+` + languageCSS
+
+	if err := os.WriteFile(cssFilePath, []byte(defaultCSS), 0644); err != nil {
+		return fmt.Errorf("failed to write default CSS file: %w", err)
+	}
+
+	p.logger.Debugf("Created default stylesheet with %s language support: %s", targetLang, cssFilePath)
+	return nil
+}
+
+// copyLanguageFonts copies language-specific fonts to the EPUB directory
+func (p *Parser) copyLanguageFonts(translatedDir, targetLang string) error {
+	// Only copy fonts for Persian/Farsi currently
+	if targetLang != "fa" {
+		return nil
+	}
+
+	cssFiles, err := p.findCSSFiles(translatedDir)
+	if err != nil {
+		return fmt.Errorf("failed to find CSS files for font copying: %w", err)
+	}
+
+	// Find unique directories containing CSS files
+	cssDirs := make(map[string]struct{})
+	for _, cssFile := range cssFiles {
+		cssDirs[filepath.Dir(cssFile)] = struct{}{}
+	}
+
+	if len(cssDirs) == 0 {
+		// If no CSS files are found, create a default 'styles' directory.
+		// This is a fallback for when a default stylesheet is created later.
+		defaultStylesDir := filepath.Join(translatedDir, "styles")
+		if err := os.MkdirAll(defaultStylesDir, 0755); err != nil {
+			p.logger.Warnf("Could not create default styles directory for fonts: %v", err)
+		} else {
+			cssDirs[defaultStylesDir] = struct{}{}
+			p.logger.Debugf("No CSS files found. Fonts will be placed in default directory: %s", defaultStylesDir)
+		}
+	}
+
+	sourceFontsDir := "web/static/fonts/vazirmatn"
+	sourceFontFilesDir := filepath.Join(sourceFontsDir, "fonts")
+	sourceCSSFile := filepath.Join(sourceFontsDir, "Vazirmatn-font-face.css")
+
+	for dir := range cssDirs {
+		destFontsContainerDir := filepath.Join(dir, "fonts")
+		if err := os.MkdirAll(destFontsContainerDir, 0755); err != nil {
+			p.logger.Warnf("Failed to create fonts container directory at %s: %v", destFontsContainerDir, err)
+			continue
+		}
+
+		// Copy font files (e.g., ttf, woff2 directories)
+		if err := p.copyDir(sourceFontFilesDir, destFontsContainerDir); err != nil {
+			p.logger.Warnf("Failed to copy Vazirmatn font files to %s: %v", destFontsContainerDir, err)
+			continue
+		}
+
+		// Copy and adapt the font face CSS
+		if _, err := os.Stat(sourceCSSFile); err == nil {
+			destCSSFile := filepath.Join(destFontsContainerDir, "vazirmatn.css")
+
+			originalCSS, err := os.ReadFile(sourceCSSFile)
+			if err != nil {
+				p.logger.Warnf("Failed to read source font CSS file %s: %v", sourceCSSFile, err)
+				continue
+			}
+
+			adaptedCSS := p.adaptFontCSSForEPUB(string(originalCSS))
+
+			if err := os.WriteFile(destCSSFile, []byte(adaptedCSS), 0644); err != nil {
+				p.logger.Warnf("Failed to write adapted CSS file to %s: %v", destCSSFile, err)
+				continue
+			}
+
+			p.logger.Debugf("Successfully copied Vazirmatn fonts and CSS for Persian language to: %s", destFontsContainerDir)
+		} else {
+			p.logger.Warnf("Source font CSS file not found: %s", sourceCSSFile)
+		}
+	}
+
+	return nil
+}
+
+// adaptFontCSSForEPUB adapts the font CSS paths for EPUB context
+func (p *Parser) adaptFontCSSForEPUB(originalCSS string) string {
+	// Replace the paths to be relative to the new font directory structure in the EPUB
+	// e.g., url('fonts/ttf/Vazirmatn-Regular.ttf') becomes url('ttf/Vazirmatn-Regular.ttf')
+	adaptedCSS := strings.ReplaceAll(originalCSS, "url('fonts/webfonts/", "url('webfonts/")
+	adaptedCSS = strings.ReplaceAll(adaptedCSS, "url('fonts/ttf/", "url('ttf/")
+	adaptedCSS = strings.ReplaceAll(adaptedCSS, `url("fonts/webfonts/`, `url("webfonts/`)
+	adaptedCSS = strings.ReplaceAll(adaptedCSS, `url("fonts/ttf/`, `url("ttf/`)
+
+	// Add EPUB-specific font loading optimizations
+	header := `/* Vazirmatn Font Face - Adapted for EPUB */
+/* Optimized for Persian/Farsi text rendering */
+
+`
+
+	return header + adaptedCSS
 }

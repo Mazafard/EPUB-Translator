@@ -3,7 +3,9 @@ package translation
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,9 +42,7 @@ func (c *OpenAIClient) SetWebSocketBroadcaster(wsHub WebSocketBroadcaster) {
 }
 
 func (c *OpenAIClient) DetectLanguage(text string) (string, error) {
-	prompt := fmt.Sprintf(`Detect the language of the following text. Respond with only the ISO 639-1 language code (e.g., "en", "es", "fr", "de").
-
-Text: %s`, text)
+	prompt := fmt.Sprintf(`Detect the language of the following text. Respond with only the ISO 639-1 language code (e.g., "en", "es", "fr", "de").\n\nText: %s`, text)
 
 	requestContext := map[string]interface{}{
 		"input_length":  len(text),
@@ -63,31 +63,119 @@ Text: %s`, text)
 	return lang, nil
 }
 
+// chunkHTML splits a string into chunks of a maximum size, trying to split at word boundaries and keeping HTML tags intact.
+func chunkHTML(text string, chunkSize int) []string {
+	if len(text) <= chunkSize {
+		return []string{text}
+	}
+
+	var chunks []string
+	var currentChunk strings.Builder
+
+	// Regex to find html tags, words, and spaces
+	re := regexp.MustCompile(`(<[^>]+>|\s+|\S+)`)
+	tokens := re.FindAllString(text, -1)
+
+	for _, token := range tokens {
+		if currentChunk.Len()+len(token) > chunkSize {
+			chunks = append(chunks, currentChunk.String())
+			currentChunk.Reset()
+		}
+		currentChunk.WriteString(token)
+	}
+
+	if currentChunk.Len() > 0 {
+		chunks = append(chunks, currentChunk.String())
+	}
+
+	return chunks
+}
+
+// ChunkTranslationResult represents the result of translating a single chunk
+type ChunkTranslationResult struct {
+	ChunkID          string
+	Index            int
+	TranslatedText   string
+	Error            error
+	TranslationJobID string
+}
+
 func (c *OpenAIClient) TranslateText(text, sourceLang, targetLang string) (string, error) {
 	if text == "" {
 		return "", nil
 	}
 
-	sourceLanguage := getLanguageName(sourceLang)
-	targetLanguage := getLanguageName(targetLang)
+	translationJobID := uuid.New().String()
+	const chunkSize = 2048 // A reasonable size to avoid token limits.
+	chunks := chunkHTML(text, chunkSize)
 
-	prompt := fmt.Sprintf(`Translate the following text from %s to %s. Maintain the original tone, style, and formatting as much as possible. Return only the translated text without any additional comments or explanations.
-
-Text: %s`, sourceLanguage, targetLanguage, text)
-
-	requestContext := map[string]interface{}{
-		"source_lang":   sourceLang,
-		"target_lang":   targetLang,
-		"input_length":  len(text),
-		"input_preview": truncateText(text, 100),
+	if len(chunks) > 1 {
+		c.logger.Infof("Text is large and has been split into %d chunks for translation (Job ID: %s)", len(chunks), translationJobID)
 	}
 
-	response, err := c.makeRequestWithType(prompt, "text_translation", requestContext)
-	if err != nil {
-		return "", fmt.Errorf("failed to translate text: %w", err)
+	// Use a channel to collect translation results in order
+	results := make([]ChunkTranslationResult, len(chunks))
+	var wg sync.WaitGroup
+
+	// Process chunks concurrently but maintain order
+	for i, chunk := range chunks {
+		wg.Add(1)
+		go func(index int, chunkText string) {
+			defer wg.Done()
+
+			chunkID := fmt.Sprintf("%s_%d", translationJobID, index)
+			c.logger.Debugf("Translating chunk %d/%d (ID: %s)...", index+1, len(chunks), chunkID)
+
+			sourceLanguage := getLanguageName(sourceLang)
+			targetLanguage := getLanguageName(targetLang)
+
+			prompt := fmt.Sprintf(`Translate the following text from %s to %s. Maintain the original tone, style, and formatting as much as possible. Return only the translated text without any additional comments or explanations.\n\nText: %s`, sourceLanguage, targetLanguage, chunkText)
+
+			requestContext := map[string]interface{}{
+				"source_lang":        sourceLang,
+				"target_lang":        targetLang,
+				"input_length":       len(chunkText),
+				"input_preview":      truncateText(chunkText, 100),
+				"chunk_index":        index + 1,
+				"total_chunks":       len(chunks),
+				"chunk_id":           chunkID,
+				"translation_job_id": translationJobID,
+			}
+
+			response, err := c.makeRequestWithType(prompt, "text_translation", requestContext)
+
+			results[index] = ChunkTranslationResult{
+				ChunkID:          chunkID,
+				Index:            index,
+				TranslatedText:   response,
+				Error:            err,
+				TranslationJobID: translationJobID,
+			}
+		}(i, chunk)
 	}
 
-	return strings.TrimSpace(response), nil
+	// Wait for all chunks to complete
+	wg.Wait()
+
+	// Reassemble chunks in order and check for errors
+	var translatedBuilder strings.Builder
+	for i, result := range results {
+		if result.Error != nil {
+			return "", fmt.Errorf("failed to translate chunk %d/%d (ID: %s): %w", i+1, len(chunks), result.ChunkID, result.Error)
+		}
+
+		if i > 0 {
+			// Check if the previous chunk ended with a space, if not, add one.
+			prev := translatedBuilder.String()
+			if !strings.HasSuffix(prev, " ") && !strings.HasPrefix(result.TranslatedText, " ") {
+				translatedBuilder.WriteString(" ")
+			}
+		}
+		translatedBuilder.WriteString(result.TranslatedText)
+	}
+
+	c.logger.Infof("Translation job %s completed successfully with %d chunks", translationJobID, len(chunks))
+	return translatedBuilder.String(), nil
 }
 
 func (c *OpenAIClient) TranslateHTML(htmlContent, sourceLang, targetLang string) (string, error) {
@@ -95,28 +183,72 @@ func (c *OpenAIClient) TranslateHTML(htmlContent, sourceLang, targetLang string)
 		return "", nil
 	}
 
-	sourceLanguage := getLanguageName(sourceLang)
-	targetLanguage := getLanguageName(targetLang)
+	translationJobID := uuid.New().String()
+	const chunkSize = 2048 // A reasonable size to avoid token limits.
+	chunks := chunkHTML(htmlContent, chunkSize)
 
-	prompt := fmt.Sprintf(`Translate the following HTML content from %s to %s. 
-
-IMPORTANT INSTRUCTIONS:
-1. Preserve ALL HTML tags, attributes, and structure exactly as they are
-2. Only translate the text content between HTML tags
-3. Do NOT translate HTML tag names, attributes, or values
-4. Maintain the original formatting, spacing, and line breaks
-5. Keep any CSS classes, IDs, and other attributes unchanged
-6. Return only the translated HTML without any additional comments
-
-HTML content:
-%s`, sourceLanguage, targetLanguage, htmlContent)
-
-	response, err := c.makeRequest(prompt)
-	if err != nil {
-		return "", fmt.Errorf("failed to translate HTML: %w", err)
+	if len(chunks) > 1 {
+		c.logger.Infof("HTML content is large and has been split into %d chunks for translation (Job ID: %s)", len(chunks), translationJobID)
 	}
 
-	return strings.TrimSpace(response), nil
+	// Use a slice to collect translation results in order
+	results := make([]ChunkTranslationResult, len(chunks))
+	var wg sync.WaitGroup
+
+	// Process chunks concurrently but maintain order
+	for i, chunk := range chunks {
+		wg.Add(1)
+		go func(index int, chunkHTML string) {
+			defer wg.Done()
+
+			chunkID := fmt.Sprintf("%s_%d", translationJobID, index)
+			c.logger.Debugf("Translating HTML chunk %d/%d (ID: %s)...", index+1, len(chunks), chunkID)
+
+			sourceLanguage := getLanguageName(sourceLang)
+			targetLanguage := getLanguageName(targetLang)
+
+			prompt := fmt.Sprintf(`Translate the following HTML content from %s to %s. \n\nIMPORTANT INSTRUCTIONS:\n1. Preserve ALL HTML tags, attributes, and structure exactly as they are\n2. Only translate the text content between HTML tags\n3. Do NOT translate HTML tag names, attributes, or values\n4. Maintain the original formatting, spacing, and line breaks\n5. Keep any CSS classes, IDs, and other attributes unchanged\n6. Return only the translated HTML without any additional comments\n\nHTML content:\n%s`, sourceLanguage, targetLanguage, chunkHTML)
+
+			requestContext := map[string]interface{}{
+				"source_lang":        sourceLang,
+				"target_lang":        targetLang,
+				"input_length":       len(chunkHTML),
+				"input_preview":      truncateText(chunkHTML, 100),
+				"chunk_index":        index + 1,
+				"total_chunks":       len(chunks),
+				"chunk_id":           chunkID,
+				"translation_job_id": translationJobID,
+				"content_type":       "html",
+			}
+
+			response, err := c.makeRequestWithType(prompt, "html_translation", requestContext)
+
+			results[index] = ChunkTranslationResult{
+				ChunkID:          chunkID,
+				Index:            index,
+				TranslatedText:   response,
+				Error:            err,
+				TranslationJobID: translationJobID,
+			}
+		}(i, chunk)
+	}
+
+	// Wait for all chunks to complete
+	wg.Wait()
+
+	// Reassemble chunks in order and check for errors
+	var translatedBuilder strings.Builder
+	for i, result := range results {
+		if result.Error != nil {
+			return "", fmt.Errorf("failed to translate HTML chunk %d/%d (ID: %s): %w", i+1, len(chunks), result.ChunkID, result.Error)
+		}
+
+		// For HTML, we generally don't add spaces between chunks as HTML handles whitespace differently
+		translatedBuilder.WriteString(result.TranslatedText)
+	}
+
+	c.logger.Infof("HTML translation job %s completed successfully with %d chunks", translationJobID, len(chunks))
+	return translatedBuilder.String(), nil
 }
 
 func (c *OpenAIClient) makeRequest(prompt string) (string, error) {

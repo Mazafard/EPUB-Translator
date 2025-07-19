@@ -53,11 +53,170 @@
 .rtl {
     direction: rtl;
     text-align: right;
+    unicode-bidi: bidi-override;
 }
 
 .rtl .chapter-content {
     direction: rtl;
     text-align: right;
+    unicode-bidi: embed;
+}
+
+/* RTL layout adjustments */
+.rtl .sidebar {
+    order: 2;
+}
+
+.rtl .main-content {
+    order: 1;
+}
+
+.rtl .logs-panel {
+    order: 3;
+}
+
+/* RTL text alignment for all content */
+.rtl p,
+.rtl div,
+.rtl span,
+.rtl h1,
+.rtl h2,
+.rtl h3,
+.rtl h4,
+.rtl h5,
+.rtl h6 {
+    text-align: right;
+    direction: rtl;
+}
+
+/* RTL button and form adjustments */
+.rtl .flex {
+    flex-direction: row-reverse;
+}
+
+.rtl .space-x-2 > * + * {
+    margin-left: 0;
+    margin-right: 0.5rem;
+}
+
+.rtl .space-x-3 > * + * {
+    margin-left: 0;
+    margin-right: 0.75rem;
+}
+
+.rtl .space-x-4 > * + * {
+    margin-left: 0;
+    margin-right: 1rem;
+}
+
+/* RTL navigation adjustments */
+.rtl .chapter-nav-item {
+    text-align: right;
+    border-right: 4px solid transparent;
+    border-left: none;
+}
+
+.rtl .chapter-nav-item.active {
+    border-right: 4px solid #3b82f6;
+    border-left: none;
+}
+
+/* RTL grid and layout adjustments */
+.rtl .grid {
+    direction: rtl;
+}
+
+.rtl .grid > div {
+    direction: rtl;
+}
+
+/* RTL alert and notification adjustments */
+.rtl .border-l-4 {
+    border-left: none;
+    border-right: 4px solid;
+}
+
+/* RTL log entries */
+.rtl .log-entry {
+    text-align: right;
+    direction: rtl;
+}
+
+/* RTL prose content */
+.rtl .prose {
+    direction: rtl;
+    text-align: right;
+}
+
+/* RTL table support (if any) */
+.rtl table {
+    direction: rtl;
+}
+
+.rtl th,
+.rtl td {
+    text-align: right;
+}
+
+/* RTL form labels */
+.rtl label {
+    text-align: right;
+}
+
+/* RTL input adjustments */
+.rtl input,
+.rtl select,
+.rtl textarea {
+    text-align: right;
+    direction: rtl;
+}
+
+/* RTL status indicators */
+.rtl .inline-flex {
+    flex-direction: row-reverse;
+}
+
+/* RTL chapter title adjustments */
+.rtl .chapter-title {
+    text-align: right;
+    direction: rtl;
+}
+
+/* Mixed content support (for documents with both LTR and RTL text) */
+.mixed-content {
+    unicode-bidi: bidi-override;
+}
+
+.mixed-content .ltr-section {
+    direction: ltr;
+    text-align: left;
+    unicode-bidi: embed;
+}
+
+.mixed-content .rtl-section {
+    direction: rtl;
+    text-align: right;
+    unicode-bidi: embed;
+}
+
+/* Language-specific font improvements for RTL */
+.rtl[lang="ar"],
+.rtl[lang="fa"],
+.rtl[lang="he"] {
+    font-family: "Noto Sans Arabic", "Noto Sans", Arial, sans-serif;
+    line-height: 1.8;
+}
+
+.rtl[lang="fa"] {
+    font-family: "Noto Sans", "Iranian Sans", "Tahoma", Arial, sans-serif;
+}
+
+.rtl[lang="ar"] {
+    font-family: "Noto Sans Arabic", "Arabic UI Text", "Tahoma", Arial, sans-serif;
+}
+
+.rtl[lang="he"] {
+    font-family: "Noto Sans Hebrew", "Hebrew UI Text", "Tahoma", Arial, sans-serif;
 }
 
 /* Progress bar animation */

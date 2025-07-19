@@ -90,6 +90,7 @@ func (s *Server) setupRoutes() {
 	s.router.POST("/translate", s.handleTranslate)
 	s.router.GET("/status/:id", s.handleStatus)
 	s.router.GET("/download/:id", s.handleDownload)
+	s.router.GET("/download-translated/:id/:lang", s.handleDownloadTranslated)
 	s.router.GET("/api/chapters/:id", s.handleGetChapters)
 	s.router.DELETE("/api/epub/:id", s.handleDeleteEpub)
 

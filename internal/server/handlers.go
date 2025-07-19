@@ -1,7 +1,9 @@
 package server
 
 import (
+	"archive/zip"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -231,6 +233,140 @@ func (s *Server) handleDownload(c *gin.Context) {
 	c.File(outputPath)
 }
 
+func (s *Server) handleDownloadTranslated(c *gin.Context) {
+	id := c.Param("id")
+	targetLang := c.Param("lang")
+
+	if targetLang == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Target language is required"})
+		return
+	}
+
+	// Load EPUB content
+	epubContent, exists := s.epubStorage[id]
+	if !exists {
+		// Try to load from disk if not in memory
+		loadedEpub, err := s.epubParser.LoadFromDirectory(id)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "EPUB not found"})
+			return
+		}
+		s.epubStorage[id] = loadedEpub
+		epubContent = loadedEpub
+	}
+
+	// Build from the translated directory instead of building a new one
+	translatedDir := fmt.Sprintf("%s_translated_%s", epubContent.TempDir, targetLang)
+
+	// Check if translated directory exists
+	if _, err := os.Stat(translatedDir); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No translated version found for this language"})
+		return
+	}
+
+	// Create output filename
+	title := epubContent.Package.Metadata.Title
+	if title == "" {
+		title = fmt.Sprintf("epub_%s", id)
+	}
+	filename := fmt.Sprintf("%s_%s.epub", sanitizeFilename(title), targetLang)
+	outputPath := filepath.Join(s.config.App.OutputDir, filename)
+
+	// Create the EPUB from the translated directory
+	if err := s.createEPUBFromDirectory(translatedDir, outputPath); err != nil {
+		s.logger.Errorf("Failed to create translated EPUB from directory: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create translated EPUB file"})
+		return
+	}
+
+	// Set download headers
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	c.Header("Content-Type", "application/epub+zip")
+
+	// Send the file
+	c.File(outputPath)
+
+	// Clean up the created file after sending (optional)
+	go func() {
+		time.Sleep(30 * time.Second) // Give some time for download to complete
+		os.Remove(outputPath)
+	}()
+}
+
+func (s *Server) createEPUBFromDirectory(sourceDir, outputPath string) error {
+	// Ensure output directory exists
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	// Create the zip file
+	zipFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer zipFile.Close()
+
+	zipWriter := zip.NewWriter(zipFile)
+	defer zipWriter.Close()
+
+	// Write mimetype file first (uncompressed)
+	writer, err := zipWriter.CreateHeader(&zip.FileHeader{
+		Name:   "mimetype",
+		Method: zip.Store, // No compression for mimetype
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create mimetype entry: %w", err)
+	}
+	if _, err := writer.Write([]byte("application/epub+zip")); err != nil {
+		return fmt.Errorf("failed to write mimetype: %w", err)
+	}
+
+	// Walk through the source directory and add all files
+	return filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+
+		// Get relative path
+		relPath, err := filepath.Rel(sourceDir, path)
+		if err != nil {
+			return err
+		}
+
+		// Skip mimetype file as we already added it
+		if relPath == "mimetype" {
+			return nil
+		}
+
+		// Open source file
+		sourceFile, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("failed to open source file %s: %w", path, err)
+		}
+		defer sourceFile.Close()
+
+		// Create entry in zip
+		zipEntry, err := zipWriter.Create(relPath)
+		if err != nil {
+			return fmt.Errorf("failed to create zip entry for %s: %w", relPath, err)
+		}
+
+		// Copy file content
+		if _, err := io.Copy(zipEntry, sourceFile); err != nil {
+			return fmt.Errorf("failed to copy file content for %s: %w", relPath, err)
+		}
+
+		return nil
+	})
+}
+
 func (s *Server) handleGetChapters(c *gin.Context) {
 	id := c.Param("id")
 
@@ -420,13 +556,13 @@ func (s *Server) handleTranslatePage(c *gin.Context) {
 		}
 
 		if targetChapter != nil {
-			// Save the translated content to disk
-			if err := s.epubParser.SaveTranslatedChapter(request.EPUBID, targetChapter.FilePath, translatedText); err != nil {
+			// Save the translated content to disk with language-specific styling
+			if err := s.epubParser.SaveTranslatedChapter(request.EPUBID, targetChapter.FilePath, translatedText, request.TargetLang); err != nil {
 				s.logger.Errorf("Failed to save translated chapter to disk: %v", err)
 				s.wsHub.BroadcastLog("error", fmt.Sprintf("Failed to persist translation: %v", err), "translation")
 			} else {
-				s.logger.Debugf("Successfully saved translated chapter to disk: %s", targetChapter.FilePath)
-				s.wsHub.BroadcastLog("info", "Translation saved to disk successfully", "translation")
+				s.logger.Debugf("Successfully saved translated chapter to disk with language %s: %s", request.TargetLang, targetChapter.FilePath)
+				s.wsHub.BroadcastLog("info", fmt.Sprintf("Translation saved with %s language support", request.TargetLang), "translation")
 
 				// Update the in-memory chapter data
 				targetChapter.TranslatedContent = translatedText
