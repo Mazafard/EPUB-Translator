@@ -1,6 +1,8 @@
 package server
 
 import (
+	"path/filepath"
+
 	"epub-translator/internal/config"
 	"epub-translator/internal/epub"
 	"epub-translator/internal/translation"
@@ -71,6 +73,15 @@ func (s *Server) setupRoutes() {
 	s.router.Use(gin.Recovery())
 
 	s.router.Static("/static", "web/static")
+
+	// Convert temp directory to absolute path for static file serving
+	absTempDir, err := filepath.Abs(s.config.App.TempDir)
+	if err != nil {
+		s.logger.Errorf("Failed to get absolute path for temp directory: %v", err)
+		absTempDir = s.config.App.TempDir
+	}
+	s.router.Static("/epub_files", absTempDir)
+
 	s.router.LoadHTMLGlob("web/templates/*")
 
 	s.router.GET("/", s.handleHome)

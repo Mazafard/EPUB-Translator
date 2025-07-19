@@ -17,7 +17,7 @@ import (
 
 func (s *Server) handleHome(c *gin.Context) {
 	c.HTML(http.StatusOK, "index.html", gin.H{
-		"Title":             "EPUB Translator",
+		"Title":              "EPUB Translator",
 		"SupportedLanguages": s.config.Translation.SupportedLangs,
 	})
 }
@@ -71,11 +71,11 @@ func (s *Server) handleUpload(c *gin.Context) {
 	s.logger.Infof("Successfully uploaded and processed EPUB: %s (ID: %s)", file.Filename, epubContent.ID)
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":             epubContent.ID,
-		"title":          epubContent.Package.Metadata.Title,
-		"language":       sourceLang,
-		"chapters":       len(epubContent.Chapters),
-		"redirect_url":   fmt.Sprintf("/preview/%s", epubContent.ID),
+		"id":           epubContent.ID,
+		"title":        epubContent.Package.Metadata.Title,
+		"language":     sourceLang,
+		"chapters":     len(epubContent.Chapters),
+		"redirect_url": fmt.Sprintf("/preview/%s", epubContent.ID),
 	})
 }
 
@@ -83,10 +83,20 @@ func (s *Server) handlePreview(c *gin.Context) {
 	id := c.Param("id")
 	epubContent, exists := s.epubStorage[id]
 	if !exists {
-		c.HTML(http.StatusNotFound, "error.html", gin.H{
-			"Error": "EPUB not found",
-		})
-		return
+		// Try to load from disk if not in memory
+		loadedEpub, err := s.epubParser.LoadFromDirectory(id)
+		if err != nil {
+			s.logger.Debugf("Failed to load EPUB from directory %s: %v", id, err)
+			c.HTML(http.StatusNotFound, "error.html", gin.H{
+				"Error": "EPUB not found",
+			})
+			return
+		}
+
+		// Store in memory for future requests
+		s.epubStorage[id] = loadedEpub
+		epubContent = loadedEpub
+		s.logger.Debugf("Successfully loaded EPUB %s from disk", id)
 	}
 
 	var chapterSummaries []gin.H
@@ -100,11 +110,11 @@ func (s *Server) handlePreview(c *gin.Context) {
 	}
 
 	c.HTML(http.StatusOK, "preview.html", gin.H{
-		"Title":             epubContent.Package.Metadata.Title,
-		"ID":                epubContent.ID,
-		"Language":          epubContent.Package.Metadata.Language,
-		"Chapters":          chapterSummaries,
-		"TotalChapters":     len(epubContent.Chapters),
+		"Title":              epubContent.Package.Metadata.Title,
+		"ID":                 epubContent.ID,
+		"Language":           epubContent.Package.Metadata.Language,
+		"Chapters":           chapterSummaries,
+		"TotalChapters":      len(epubContent.Chapters),
 		"SupportedLanguages": s.config.Translation.SupportedLangs,
 	})
 }
@@ -153,7 +163,7 @@ func (s *Server) handleTranslate(c *gin.Context) {
 
 func (s *Server) handleStatus(c *gin.Context) {
 	id := c.Param("id")
-	
+
 	progress := s.translationSvc.GetProgress(id)
 	if progress == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Translation not found"})
@@ -189,7 +199,7 @@ func (s *Server) handleStatus(c *gin.Context) {
 
 func (s *Server) handleDownload(c *gin.Context) {
 	id := c.Param("id")
-	
+
 	epubContent, exists := s.epubStorage[id]
 	if !exists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "EPUB not found"})
@@ -209,8 +219,8 @@ func (s *Server) handleDownload(c *gin.Context) {
 		return
 	}
 
-	filename := fmt.Sprintf("%s_%s.epub", 
-		sanitizeFilename(epubContent.Package.Metadata.Title), 
+	filename := fmt.Sprintf("%s_%s.epub",
+		sanitizeFilename(epubContent.Package.Metadata.Title),
 		progress.TargetLanguage)
 
 	c.Header("Content-Description", "File Transfer")
@@ -223,11 +233,17 @@ func (s *Server) handleDownload(c *gin.Context) {
 
 func (s *Server) handleGetChapters(c *gin.Context) {
 	id := c.Param("id")
-	
+
 	epubContent, exists := s.epubStorage[id]
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "EPUB not found"})
-		return
+		// Try to load from disk if not in memory
+		loadedEpub, err := s.epubParser.LoadFromDirectory(id)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "EPUB not found"})
+			return
+		}
+		s.epubStorage[id] = loadedEpub
+		epubContent = loadedEpub
 	}
 
 	page := 0
@@ -255,33 +271,33 @@ func (s *Server) handleGetChapters(c *gin.Context) {
 	}
 
 	chapters := epubContent.Chapters[start:end]
-	
+
 	var chapterData []gin.H
 	for _, chapter := range chapters {
 		chapterData = append(chapterData, gin.H{
-			"id":                chapter.ID,
-			"title":             chapter.Title,
-			"content":           truncateText(chapter.Content, 500),
+			"id":                 chapter.ID,
+			"title":              chapter.Title,
+			"content":            truncateText(chapter.Content, 500),
 			"translated_content": truncateText(chapter.TranslatedContent, 500),
-			"word_count":        chapter.WordCount,
-			"is_translated":     chapter.IsTranslated,
-			"order":             chapter.Order,
+			"word_count":         chapter.WordCount,
+			"is_translated":      chapter.IsTranslated,
+			"order":              chapter.Order,
 		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"chapters":      chapterData,
-		"total":         len(epubContent.Chapters),
-		"page":          page,
-		"limit":         limit,
-		"has_next":      end < len(epubContent.Chapters),
-		"has_previous":  page > 0,
+		"chapters":     chapterData,
+		"total":        len(epubContent.Chapters),
+		"page":         page,
+		"limit":        limit,
+		"has_next":     end < len(epubContent.Chapters),
+		"has_previous": page > 0,
 	})
 }
 
 func (s *Server) handleDeleteEpub(c *gin.Context) {
 	id := c.Param("id")
-	
+
 	if _, exists := s.epubStorage[id]; !exists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "EPUB not found"})
 		return
@@ -322,8 +338,14 @@ func (s *Server) handleGetChapter(c *gin.Context) {
 
 	epubContent, exists := s.epubStorage[epubID]
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "EPUB not found"})
-		return
+		// Try to load from disk if not in memory
+		loadedEpub, err := s.epubParser.LoadFromDirectory(epubID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "EPUB not found"})
+			return
+		}
+		s.epubStorage[epubID] = loadedEpub
+		epubContent = loadedEpub
 	}
 
 	// Find the specific chapter
@@ -353,11 +375,11 @@ func (s *Server) handleGetChapter(c *gin.Context) {
 
 func (s *Server) handleTranslatePage(c *gin.Context) {
 	var request struct {
-		EPUBID      string `json:"epub_id" binding:"required"`
-		ChapterID   string `json:"chapter_id" binding:"required"`
-		Content     string `json:"content" binding:"required"`
-		TargetLang  string `json:"target_lang" binding:"required"`
-		SourceLang  string `json:"source_lang"`
+		EPUBID     string `json:"epub_id" binding:"required"`
+		ChapterID  string `json:"chapter_id" binding:"required"`
+		Content    string `json:"content" binding:"required"`
+		TargetLang string `json:"target_lang" binding:"required"`
+		SourceLang string `json:"source_lang"`
 	}
 
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -386,6 +408,32 @@ func (s *Server) handleTranslatePage(c *gin.Context) {
 			s.logger.Errorf("Failed to translate page: %v", err)
 			s.wsHub.BroadcastLog("error", fmt.Sprintf("Page translation failed: %v", err), "translation")
 			return
+		}
+
+		// Find the chapter to get its file path
+		var targetChapter *epub.Chapter
+		for i := range epubContent.Chapters {
+			if epubContent.Chapters[i].ID == request.ChapterID {
+				targetChapter = &epubContent.Chapters[i]
+				break
+			}
+		}
+
+		if targetChapter != nil {
+			// Save the translated content to disk
+			if err := s.epubParser.SaveTranslatedChapter(request.EPUBID, targetChapter.FilePath, translatedText); err != nil {
+				s.logger.Errorf("Failed to save translated chapter to disk: %v", err)
+				s.wsHub.BroadcastLog("error", fmt.Sprintf("Failed to persist translation: %v", err), "translation")
+			} else {
+				s.logger.Debugf("Successfully saved translated chapter to disk: %s", targetChapter.FilePath)
+				s.wsHub.BroadcastLog("info", "Translation saved to disk successfully", "translation")
+
+				// Update the in-memory chapter data
+				targetChapter.TranslatedContent = translatedText
+				targetChapter.IsTranslated = true
+			}
+		} else {
+			s.logger.Warnf("Chapter not found for ID: %s", request.ChapterID)
 		}
 
 		// Broadcast the result
@@ -430,11 +478,11 @@ func (s *Server) handleReader(c *gin.Context) {
 	}
 
 	c.HTML(http.StatusOK, "reader.html", gin.H{
-		"Title":             epubContent.Package.Metadata.Title,
-		"ID":                epubContent.ID,
-		"Language":          epubContent.Package.Metadata.Language,
-		"Chapters":          chapterSummaries,
-		"TotalChapters":     len(epubContent.Chapters),
+		"Title":              epubContent.Package.Metadata.Title,
+		"ID":                 epubContent.ID,
+		"Language":           epubContent.Package.Metadata.Language,
+		"Chapters":           chapterSummaries,
+		"TotalChapters":      len(epubContent.Chapters),
 		"SupportedLanguages": s.config.Translation.SupportedLangs,
 	})
 }
@@ -468,7 +516,7 @@ func (s *Server) handlePreviousWork(c *gin.Context) {
 
 func (s *Server) listTempFiles() ([]FileInfo, error) {
 	tempDir := s.config.App.TempDir
-	
+
 	// Ensure temp directory exists
 	if _, err := os.Stat(tempDir); os.IsNotExist(err) {
 		return []FileInfo{}, nil
@@ -555,7 +603,7 @@ func (s *Server) handleDownloadFile(c *gin.Context) {
 	c.Header("Content-Description", "File Transfer")
 	c.Header("Content-Transfer-Encoding", "binary")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
-	
+
 	// Set appropriate content type based on file extension
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch ext {
@@ -683,12 +731,12 @@ func (s *Server) handleProcessFile(c *gin.Context) {
 	s.logger.Infof("Successfully processed existing EPUB: %s (ID: %s)", filename, epubContent.ID)
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":             epubContent.ID,
-		"title":          epubContent.Package.Metadata.Title,
-		"language":       sourceLang,
-		"chapters":       len(epubContent.Chapters),
-		"redirect_url":   fmt.Sprintf("/preview/%s", epubContent.ID),
-		"message":        "EPUB processed successfully",
+		"id":           epubContent.ID,
+		"title":        epubContent.Package.Metadata.Title,
+		"language":     sourceLang,
+		"chapters":     len(epubContent.Chapters),
+		"redirect_url": fmt.Sprintf("/preview/%s", epubContent.ID),
+		"message":      "EPUB processed successfully",
 	})
 }
 

@@ -31,11 +31,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Single document translation elements
     const translateSingleBtn = document.getElementById('translate-single-btn');
-    const singleTranslateModal = document.getElementById('single-translate-modal');
-    const singleDocTargetLang = document.getElementById('single-doc-target-lang');
-    const singleDocChapter = document.getElementById('single-doc-chapter');
-    const cancelSingleTranslate = document.getElementById('cancel-single-translate');
-    const confirmSingleTranslate = document.getElementById('confirm-single-translate');
     
     // State
     let translationPolling = null;
@@ -94,22 +89,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     translateSingleBtn.addEventListener('click', function() {
-        showSingleTranslateModal();
+        translateCurrentPage();
     });
     
-    cancelSingleTranslate.addEventListener('click', function() {
-        hideSingleTranslateModal();
-    });
-    
-    confirmSingleTranslate.addEventListener('click', function() {
-        startSingleTranslation();
-    });
-    
-    // Close modal on background click
-    singleTranslateModal.addEventListener('click', function(e) {
-        if (e.target === singleTranslateModal) {
-            hideSingleTranslateModal();
-        }
+    // Update button state when target language changes
+    targetLanguageSelect.addEventListener('change', function() {
+        updateTranslateSingleButtonState();
     });
     
     async function initializePage() {
@@ -122,6 +107,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Check for ongoing translation
             checkOngoingTranslation();
+            
+            // Initialize button states
+            updateTranslateSingleButtonState();
             
         } catch (error) {
             console.error('Error initializing page:', error);
@@ -190,6 +178,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Render all chapters
         renderAllChapters(chaptersData);
+        
+        // Update translate button state
+        updateTranslateSingleButtonState();
     }
     
     function showTranslatedChapters() {
@@ -221,6 +212,9 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             allContent.innerHTML = '<p class="text-gray-500 text-center py-12">No translated chapters available yet</p>';
         }
+        
+        // Update translate button state
+        updateTranslateSingleButtonState();
     }
     
     async function loadSingleChapter(chapterId) {
@@ -256,6 +250,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Render single chapter
             renderSingleChapter(chapter);
+            
+            // Update translate button state
+            updateTranslateSingleButtonState();
             
         } catch (error) {
             console.error('Error loading single chapter:', error);
@@ -602,19 +599,23 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function handlePageTranslation(data) {
-        addLog('info', `Page translation completed for chapter: ${data.chapter_id}`);
+        // Handle both camelCase and snake_case field names for compatibility
+        const chapterId = data.chapter_id || data.ChapterID;
+        const translatedText = data.translated_text || data.TranslatedText;
+        
+        addLog('info', `Page translation completed for chapter: ${chapterId}`);
         
         // Update the chapter data
-        const chapterIndex = chaptersData.findIndex(ch => ch.id === data.chapter_id);
+        const chapterIndex = chaptersData.findIndex(ch => ch.id === chapterId);
         if (chapterIndex !== -1) {
-            chaptersData[chapterIndex].translated_content = data.translated_text;
+            chaptersData[chapterIndex].translated_content = translatedText;
             chaptersData[chapterIndex].is_translated = true;
             
             // Refresh current view if needed
             if (currentViewMode === 'single') {
                 const activeItem = document.querySelector('.chapter-nav-item.active');
-                if (activeItem && activeItem.dataset.chapterId === data.chapter_id) {
-                    loadSingleChapter(data.chapter_id);
+                if (activeItem && activeItem.dataset.chapterId === chapterId) {
+                    loadSingleChapter(chapterId);
                 }
             }
             
@@ -622,34 +623,67 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Single document translation functionality
-    function showSingleTranslateModal() {
-        singleTranslateModal.classList.remove('hidden');
-    }
-    
-    function hideSingleTranslateModal() {
-        singleTranslateModal.classList.add('hidden');
-        singleDocTargetLang.value = '';
-        singleDocChapter.value = '';
-    }
-    
-    async function startSingleTranslation() {
-        const targetLang = singleDocTargetLang.value;
-        const chapterId = singleDocChapter.value;
+    // Single page translation functionality
+    function updateTranslateSingleButtonState() {
+        const targetLang = targetLanguageSelect.value;
+        const hasCurrentPage = (currentViewMode === 'single' && document.querySelector('.chapter-nav-item.active')) || 
+                               (currentViewMode === 'all' || currentViewMode === 'translated-only');
         
-        if (!targetLang || !chapterId) {
-            addLog('warn', 'Please select both target language and chapter');
+        translateSingleBtn.disabled = !targetLang || !hasCurrentPage;
+        
+        if (!targetLang) {
+            translateSingleBtn.title = 'Please select a target language first';
+        } else if (!hasCurrentPage) {
+            translateSingleBtn.title = 'No page available to translate';
+        } else {
+            translateSingleBtn.title = currentViewMode === 'single' ? 
+                'Translate current chapter' : 
+                'Translate first visible chapter';
+        }
+    }
+    
+    async function translateCurrentPage() {
+        const targetLang = targetLanguageSelect.value;
+        
+        if (!targetLang) {
+            addLog('warn', 'Please select a target language first');
             return;
         }
         
         try {
-            const chapter = chaptersData.find(ch => ch.id === chapterId);
-            if (!chapter) {
+            let chapterToTranslate;
+            
+            if (currentViewMode === 'single') {
+                // Get the currently active chapter
+                const activeItem = document.querySelector('.chapter-nav-item.active');
+                if (!activeItem) {
+                    throw new Error('No active chapter found');
+                }
+                const chapterId = activeItem.dataset.chapterId;
+                chapterToTranslate = chaptersData.find(ch => ch.id === chapterId);
+            } else {
+                // Get the first visible chapter (all or translated-only mode)
+                const visibleChapters = currentViewMode === 'translated-only' ? 
+                    chaptersData.filter(ch => ch.is_translated) : 
+                    chaptersData;
+                    
+                if (visibleChapters.length === 0) {
+                    throw new Error('No chapters available to translate');
+                }
+                chapterToTranslate = visibleChapters[0];
+            }
+            
+            if (!chapterToTranslate) {
                 throw new Error('Chapter not found');
             }
             
-            hideSingleTranslateModal();
-            addLog('info', `Starting single chapter translation: ${chapter.title}`);
+            if (!chapterToTranslate.content) {
+                throw new Error('Chapter content not available');
+            }
+            
+            addLog('info', `Starting translation of: ${chapterToTranslate.title}`);
+            translateSingleBtn.disabled = true;
+            translateSingleBtn.textContent = 'Translating...';
             
             const response = await fetch('/api/translate-page', {
                 method: 'POST',
@@ -658,8 +692,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 body: JSON.stringify({
                     epub_id: epubId,
-                    chapter_id: chapterId,
-                    content: chapter.content,
+                    chapter_id: chapterToTranslate.id,
+                    content: chapterToTranslate.content,
                     target_lang: targetLang
                 })
             });
@@ -670,11 +704,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(result.error || 'Translation request failed');
             }
             
-            addLog('info', `Single chapter translation request sent successfully`);
+            addLog('info', `Translation request sent successfully for: ${chapterToTranslate.title}`);
             
         } catch (error) {
-            console.error('Error starting single translation:', error);
-            addLog('error', `Failed to start single translation: ${error.message}`);
+            console.error('Error starting translation:', error);
+            addLog('error', `Failed to start translation: ${error.message}`);
+        } finally {
+            translateSingleBtn.disabled = false;
+            translateSingleBtn.textContent = 'Translate Current Page';
+            updateTranslateSingleButtonState();
         }
     }
     
