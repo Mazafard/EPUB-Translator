@@ -23,14 +23,34 @@ document.addEventListener('DOMContentLoaded', function() {
     const allContent = document.getElementById('all-content');
     const singleChapterContent = document.getElementById('single-chapter-content');
     
+    // WebSocket and logs elements
+    const logsContainer = document.getElementById('logs-container');
+    const wsIndicator = document.getElementById('ws-indicator');
+    const wsStatus = document.getElementById('ws-status');
+    const clearLogsBtn = document.getElementById('clear-logs');
+    
+    // Single document translation elements
+    const translateSingleBtn = document.getElementById('translate-single-btn');
+    const singleTranslateModal = document.getElementById('single-translate-modal');
+    const singleDocTargetLang = document.getElementById('single-doc-target-lang');
+    const singleDocChapter = document.getElementById('single-doc-chapter');
+    const cancelSingleTranslate = document.getElementById('cancel-single-translate');
+    const confirmSingleTranslate = document.getElementById('confirm-single-translate');
+    
     // State
     let translationPolling = null;
     let chaptersData = [];
     let currentViewMode = 'all'; // 'all', 'single', 'translated-only'
     let showingTranslated = false;
+    let websocket = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
     
     // Initialize the page
     initializePage();
+    
+    // Initialize WebSocket connection
+    initializeWebSocket();
     
     // Event listeners
     targetLanguageSelect.addEventListener('change', function() {
@@ -66,6 +86,30 @@ document.addEventListener('DOMContentLoaded', function() {
     
     toggleViewBtn.addEventListener('click', function() {
         toggleTranslatedView();
+    });
+    
+    // WebSocket and single translation event listeners
+    clearLogsBtn.addEventListener('click', function() {
+        clearLogs();
+    });
+    
+    translateSingleBtn.addEventListener('click', function() {
+        showSingleTranslateModal();
+    });
+    
+    cancelSingleTranslate.addEventListener('click', function() {
+        hideSingleTranslateModal();
+    });
+    
+    confirmSingleTranslate.addEventListener('click', function() {
+        startSingleTranslation();
+    });
+    
+    // Close modal on background click
+    singleTranslateModal.addEventListener('click', function(e) {
+        if (e.target === singleTranslateModal) {
+            hideSingleTranslateModal();
+        }
     });
     
     async function initializePage() {
@@ -446,6 +490,192 @@ document.addEventListener('DOMContentLoaded', function() {
                 // No existing translation, normal state
                 console.log('No ongoing translation');
             });
+    }
+    
+    // WebSocket functionality
+    function initializeWebSocket() {
+        connectWebSocket();
+    }
+    
+    function connectWebSocket() {
+        try {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            websocket = new WebSocket(wsUrl);
+            
+            websocket.onopen = function() {
+                addLog('info', 'WebSocket connected successfully');
+                updateConnectionStatus(true);
+                reconnectAttempts = 0;
+            };
+            
+            websocket.onmessage = function(event) {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleWebSocketMessage(message);
+                } catch (error) {
+                    console.error('Error parsing WebSocket message:', error);
+                    addLog('error', 'Failed to parse WebSocket message');
+                }
+            };
+            
+            websocket.onclose = function() {
+                addLog('warn', 'WebSocket connection closed');
+                updateConnectionStatus(false);
+                
+                // Attempt to reconnect
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    addLog('info', `Attempting to reconnect... (${reconnectAttempts}/${maxReconnectAttempts})`);
+                    setTimeout(connectWebSocket, 3000 * reconnectAttempts);
+                }
+            };
+            
+            websocket.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                addLog('error', 'WebSocket connection error');
+                updateConnectionStatus(false);
+            };
+            
+        } catch (error) {
+            console.error('Failed to create WebSocket connection:', error);
+            addLog('error', 'Failed to create WebSocket connection');
+            updateConnectionStatus(false);
+        }
+    }
+    
+    function handleWebSocketMessage(message) {
+        switch (message.type) {
+            case 'log':
+                addLog(message.level || 'info', message.message, message.category);
+                break;
+            case 'translation_progress':
+                updateProgress(message.data);
+                break;
+            case 'page_translation':
+                handlePageTranslation(message.data);
+                break;
+            case 'llm_request':
+                addLog('debug', `LLM Request: ${JSON.stringify(message.data, null, 2)}`);
+                break;
+            case 'llm_response':
+                addLog('debug', `LLM Response: ${JSON.stringify(message.data, null, 2)}`);
+                break;
+            default:
+                addLog('debug', `Unknown message type: ${message.type}`);
+        }
+    }
+    
+    function addLog(level, message, category) {
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry log-${level}`;
+        
+        const categoryText = category ? `[${category}] ` : '';
+        logEntry.textContent = `${timestamp} ${categoryText}${message}`;
+        
+        logsContainer.appendChild(logEntry);
+        
+        // Auto-scroll to bottom
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+        
+        // Limit log entries to prevent memory issues
+        const maxLogEntries = 1000;
+        while (logsContainer.children.length > maxLogEntries) {
+            logsContainer.removeChild(logsContainer.firstChild);
+        }
+    }
+    
+    function updateConnectionStatus(connected) {
+        if (connected) {
+            wsIndicator.className = 'w-2 h-2 bg-green-500 rounded-full';
+            wsStatus.textContent = 'Connected';
+        } else {
+            wsIndicator.className = 'w-2 h-2 bg-red-500 rounded-full';
+            wsStatus.textContent = 'Disconnected';
+        }
+    }
+    
+    function clearLogs() {
+        logsContainer.innerHTML = '<div class="log-entry log-info">Logs cleared</div>';
+    }
+    
+    function handlePageTranslation(data) {
+        addLog('info', `Page translation completed for chapter: ${data.chapter_id}`);
+        
+        // Update the chapter data
+        const chapterIndex = chaptersData.findIndex(ch => ch.id === data.chapter_id);
+        if (chapterIndex !== -1) {
+            chaptersData[chapterIndex].translated_content = data.translated_text;
+            chaptersData[chapterIndex].is_translated = true;
+            
+            // Refresh current view if needed
+            if (currentViewMode === 'single') {
+                const activeItem = document.querySelector('.chapter-nav-item.active');
+                if (activeItem && activeItem.dataset.chapterId === data.chapter_id) {
+                    loadSingleChapter(data.chapter_id);
+                }
+            }
+            
+            updateChapterNavigation();
+        }
+    }
+    
+    // Single document translation functionality
+    function showSingleTranslateModal() {
+        singleTranslateModal.classList.remove('hidden');
+    }
+    
+    function hideSingleTranslateModal() {
+        singleTranslateModal.classList.add('hidden');
+        singleDocTargetLang.value = '';
+        singleDocChapter.value = '';
+    }
+    
+    async function startSingleTranslation() {
+        const targetLang = singleDocTargetLang.value;
+        const chapterId = singleDocChapter.value;
+        
+        if (!targetLang || !chapterId) {
+            addLog('warn', 'Please select both target language and chapter');
+            return;
+        }
+        
+        try {
+            const chapter = chaptersData.find(ch => ch.id === chapterId);
+            if (!chapter) {
+                throw new Error('Chapter not found');
+            }
+            
+            hideSingleTranslateModal();
+            addLog('info', `Starting single chapter translation: ${chapter.title}`);
+            
+            const response = await fetch('/api/translate-page', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    epub_id: epubId,
+                    chapter_id: chapterId,
+                    content: chapter.content,
+                    target_lang: targetLang
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || 'Translation request failed');
+            }
+            
+            addLog('info', `Single chapter translation request sent successfully`);
+            
+        } catch (error) {
+            console.error('Error starting single translation:', error);
+            addLog('error', `Failed to start single translation: ${error.message}`);
+        }
     }
     
     // Keyboard shortcuts

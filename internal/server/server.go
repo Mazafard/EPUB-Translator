@@ -40,6 +40,9 @@ func New(cfg *config.Config, logger *logrus.Logger) *Server {
 	wsHub := NewHub(logger)
 	go wsHub.Run()
 
+	// Set WebSocket broadcaster on OpenAI client for LLM logging
+	openaiClient.SetWebSocketBroadcaster(wsHub)
+
 	translationSvc := translation.NewService(openaiClient, logger, cfg.Translation.BatchSize, wsHub)
 
 	s := &Server{

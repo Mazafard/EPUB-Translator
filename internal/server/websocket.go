@@ -29,6 +29,8 @@ const (
 	MessageTypeLog                 MessageType = "log"
 	MessageTypePageTranslation     MessageType = "page_translation"
 	MessageTypeChapterList         MessageType = "chapter_list"
+	MessageTypeLLMRequest          MessageType = "llm_request"
+	MessageTypeLLMResponse         MessageType = "llm_response"
 )
 
 // WebSocketMessage represents a message sent over WebSocket
@@ -64,6 +66,31 @@ type PageTranslationMessage struct {
 	TranslatedText string `json:"translated_text"`
 	SourceLanguage string `json:"source_language"`
 	TargetLanguage string `json:"target_language"`
+}
+
+// LLMRequestMessage represents an LLM request for debugging
+type LLMRequestMessage struct {
+	RequestID   string                 `json:"request_id"`
+	Model       string                 `json:"model"`
+	Prompt      string                 `json:"prompt"`
+	MaxTokens   int                    `json:"max_tokens"`
+	Temperature float32                `json:"temperature"`
+	Timestamp   time.Time              `json:"timestamp"`
+	RequestType string                 `json:"request_type"` // "translation", "detection", etc.
+	Context     map[string]interface{} `json:"context,omitempty"`
+}
+
+// LLMResponseMessage represents an LLM response for debugging
+type LLMResponseMessage struct {
+	RequestID    string                 `json:"request_id"`
+	Response     string                 `json:"response"`
+	TokensUsed   int                    `json:"tokens_used,omitempty"`
+	FinishReason string                 `json:"finish_reason,omitempty"`
+	Duration     time.Duration          `json:"duration"`
+	Success      bool                   `json:"success"`
+	Error        string                 `json:"error,omitempty"`
+	Timestamp    time.Time              `json:"timestamp"`
+	Context      map[string]interface{} `json:"context,omitempty"`
 }
 
 // Client represents a WebSocket client connection
@@ -143,13 +170,13 @@ func (h *Hub) BroadcastMessage(msgType interface{}, data interface{}) {
 		h.logger.Warnf("Invalid message type: %v", msgType)
 		return
 	}
-	
+
 	message := WebSocketMessage{
 		Type:      messageType,
 		Timestamp: time.Now(),
 		Data:      data,
 	}
-	
+
 	select {
 	case h.broadcast <- message:
 	default:
