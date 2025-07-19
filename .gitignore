@@ -17,7 +17,7 @@ go.work.sum
 /bin/
 /dist/
 config.json
-epub-translator
+
 
 # Dependencies
 vendor/
