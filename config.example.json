@@ -1,0 +1,26 @@
+{
+  "server": {
+    "port": 8080,
+    "read_timeout": "30s",
+    "write_timeout": "30s"
+  },
+  "openai": {
+    "api_key": "your-openai-api-key-here",
+    "model": "gpt-3.5-turbo",
+    "max_tokens": 2048,
+    "temperature": 0.3
+  },
+  "translation": {
+    "batch_size": 10,
+    "max_retries": 3,
+    "retry_delay": "2s",
+    "supported_languages": [
+      "en", "es", "fr", "de", "it", "pt", "ru", "ja", "ko", "zh",
+      "ar", "fa", "he", "hi", "tr", "pl", "nl", "sv", "da", "no"
+    ]
+  },
+  "app": {
+    "temp_dir": "tmp",
+    "output_dir": "output"
+  }
+}

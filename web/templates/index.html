@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+    <link href="/static/css/style.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">📚 EPUB Translator</h1>
+            <p class="text-gray-600">Translate your EPUB books using AI-powered translation</p>
+        </header>
+
+        <div class="bg-white rounded-lg shadow-lg p-8">
+            <div id="upload-section">
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors duration-200" 
+                     id="drop-zone">
+                    <div class="mb-4">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <p class="text-lg text-gray-600 mb-2">Drag & drop your EPUB file here</p>
+                    <p class="text-sm text-gray-500 mb-4">or click to browse</p>
+                    <input type="file" id="epub-file" accept=".epub" class="hidden">
+                    <button onclick="document.getElementById('epub-file').click()" 
+                            class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200">
+                        Choose File
+                    </button>
+                </div>
+                
+                <div class="mt-4 text-sm text-gray-500">
+                    <p>• Supported format: EPUB files only</p>
+                    <p>• Maximum file size: 50MB</p>
+                    <p>• Supported languages: {{range $index, $lang := .SupportedLanguages}}{{if $index}}, {{end}}{{$lang}}{{end}}</p>
+                </div>
+            </div>
+
+            <div id="upload-progress" class="hidden">
+                <div class="text-center">
+                    <div class="mb-4">
+                        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    </div>
+                    <p class="text-gray-600">Processing your EPUB file...</p>
+                    <div class="w-full bg-gray-200 rounded-full h-2 mt-4">
+                        <div class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 0%" id="progress-bar"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="error-message" class="hidden mt-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-700">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p id="error-text"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Previous Work Section -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mt-8">
+            <div class="text-center">
+                <h2 class="text-xl font-bold text-gray-800 mb-3">📁 Previous Work</h2>
+                <p class="text-gray-600 mb-4">View and manage your previously uploaded EPUB files</p>
+                <a href="/previous-work" 
+                   class="inline-flex items-center bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    View Previous Work
+                </a>
+            </div>
+        </div>
+
+        <footer class="text-center mt-8 text-gray-500">
+            <p>Powered by LLMs for high-quality translations</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/upload.js"></script>
+</body>
+</html>

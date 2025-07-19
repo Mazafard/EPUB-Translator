@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reader: {{.Title}}</title>
+    <link href="/static/css/style.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .sidebar {
+            height: calc(100vh - 2rem);
+            overflow-y: auto;
+        }
+        .content-area {
+            height: calc(100vh - 2rem);
+            overflow-y: auto;
+        }
+        .chapter-content {
+            line-height: 1.8;
+            font-size: 1.1rem;
+        }
+        .rtl {
+            direction: rtl;
+            text-align: right;
+        }
+        .ltr {
+            direction: ltr;
+            text-align: left;
+        }
+        .log-entry {
+            border-radius: 4px;
+            margin-bottom: 4px;
+            padding: 8px 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+        }
+        .log-info { background-color: #e3f2fd; color: #1565c0; }
+        .log-warn { background-color: #fff3e0; color: #ef6c00; }
+        .log-error { background-color: #ffebee; color: #c62828; }
+        .log-debug { background-color: #f3e5f5; color: #7b1fa2; }
+        
+        .translation-overlay {
+            position: relative;
+        }
+        .translation-overlay::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, rgba(59, 130, 246, 0.1) 25%, transparent 25%), 
+                        linear-gradient(-45deg, rgba(59, 130, 246, 0.1) 25%, transparent 25%), 
+                        linear-gradient(45deg, transparent 75%, rgba(59, 130, 246, 0.1) 75%), 
+                        linear-gradient(-45deg, transparent 75%, rgba(59, 130, 246, 0.1) 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .translation-overlay.translating::after {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="container mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <h1 class="text-xl font-bold text-gray-800">{{.Title}}</h1>
+                    <span class="text-sm text-gray-600">{{.Language}} • {{.TotalChapters}} chapters</span>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <button id="toggle-logs" class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition-colors">
+                        Toggle Logs
+                    </button>
+                    <a href="/preview/{{.ID}}" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors">
+                        Translation
+                    </a>
+                    <a href="/" class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition-colors">
+                        Home
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container mx-auto px-4 py-4">
+        <div class="grid grid-cols-12 gap-4 h-full">
+            <!-- Sidebar Navigation -->
+            <div class="col-span-3">
+                <div class="bg-white rounded-lg shadow-lg sidebar">
+                    <div class="p-4 border-b border-gray-200">
+                        <h2 class="text-lg font-bold text-gray-800 mb-2">Chapters</h2>
+                        <div class="flex space-x-2 mb-3">
+                            <select id="target-language" class="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                <option value="">Select language for translation</option>
+                                {{range .SupportedLanguages}}
+                                <option value="{{.}}">{{.}}</option>
+                                {{end}}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="divide-y divide-gray-200">
+                        {{range .Chapters}}
+                        <div class="chapter-item p-3 hover:bg-gray-50 cursor-pointer transition-colors" 
+                             data-chapter-id="{{.ID}}" data-order="{{.Order}}">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1 min-w-0">
+                                    <h3 class="text-sm font-medium text-gray-900 truncate">{{.Title}}</h3>
+                                    <div class="flex items-center space-x-2 mt-1 text-xs text-gray-500">
+                                        <span>{{.WordCount}} words</span>
+                                        {{if .IsTranslated}}
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs bg-green-100 text-green-800">
+                                            ✓
+                                        </span>
+                                        {{else}}
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+                                            ○
+                                        </span>
+                                        {{end}}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {{end}}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content Area -->
+            <div class="col-span-6">
+                <div class="bg-white rounded-lg shadow-lg content-area">
+                    <div class="p-6">
+                        <div id="content-header" class="border-b border-gray-200 pb-4 mb-6">
+                            <h2 id="current-chapter-title" class="text-2xl font-bold text-gray-800 mb-2">
+                                Select a chapter to begin reading
+                            </h2>
+                            <div id="chapter-controls" class="hidden flex items-center space-x-3">
+                                <button id="translate-page-btn" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors disabled:bg-gray-400">
+                                    Translate Page
+                                </button>
+                                <button id="toggle-view-btn" class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition-colors">
+                                    Show Translated
+                                </button>
+                                <span id="translation-status" class="text-sm text-gray-600"></span>
+                            </div>
+                        </div>
+                        
+                        <div id="chapter-content" class="chapter-content prose max-w-none">
+                            <p class="text-gray-600 text-center py-12">
+                                Choose a chapter from the sidebar to start reading
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logs Panel -->
+            <div class="col-span-3">
+                <div id="logs-panel" class="bg-white rounded-lg shadow-lg sidebar hidden">
+                    <div class="p-4 border-b border-gray-200">
+                        <div class="flex items-center justify-between">
+                            <h2 class="text-lg font-bold text-gray-800">Real-time Logs</h2>
+                            <button id="clear-logs" class="text-xs text-gray-500 hover:text-gray-700">Clear</button>
+                        </div>
+                        <div class="mt-2">
+                            <div id="connection-status" class="flex items-center space-x-2">
+                                <div id="ws-indicator" class="w-2 h-2 bg-red-500 rounded-full"></div>
+                                <span id="ws-status" class="text-xs text-gray-600">Connecting...</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="logs-container" class="p-4 space-y-1 overflow-y-auto" style="height: calc(100% - 80px);">
+                        <div class="log-entry log-info">
+                            System initialized - waiting for connection...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Translation Progress Modal -->
+    <div id="translation-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="text-center">
+                <h3 class="text-lg font-bold text-gray-900 mb-4">Translating Page</h3>
+                <div class="flex justify-center mb-4">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                </div>
+                <p class="text-gray-600 mb-4" id="translation-progress-text">Please wait while we translate this page...</p>
+                <div class="space-y-2">
+                    <div class="text-xs text-gray-500">
+                        Source: <span id="source-lang-display"></span> → Target: <span id="target-lang-display"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const epubId = "{{.ID}}";
+        const supportedLanguages = {
+            {{range $index, $lang := .SupportedLanguages}}
+            {{if $index}},{{end}}"{{$lang}}": "{{$lang}}"
+            {{end}}
+        };
+    </script>
+    <script src="/static/js/reader.js"></script>
+</body>
+</html>

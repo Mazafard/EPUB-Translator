@@ -1,0 +1,202 @@
+/* Custom styles for EPUB Translator */
+
+/* Drop zone styling */
+#drop-zone.drag-over {
+    border-color: #3b82f6;
+    background-color: #f0f9ff;
+}
+
+/* Progress animations */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Modal styles */
+.modal-backdrop {
+    backdrop-filter: blur(4px);
+}
+
+/* Chapter content styling */
+.chapter-content {
+    line-height: 1.6;
+}
+
+.chapter-content p {
+    margin-bottom: 1rem;
+}
+
+.chapter-content h1,
+.chapter-content h2,
+.chapter-content h3,
+.chapter-content h4,
+.chapter-content h5,
+.chapter-content h6 {
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    margin-top: 1rem;
+}
+
+.chapter-content h1 { font-size: 1.5rem; }
+.chapter-content h2 { font-size: 1.3rem; }
+.chapter-content h3 { font-size: 1.1rem; }
+
+/* RTL language support */
+.rtl {
+    direction: rtl;
+    text-align: right;
+}
+
+.rtl .chapter-content {
+    direction: rtl;
+    text-align: right;
+}
+
+/* Progress bar animation */
+.progress-bar-animated {
+    background-image: linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.15) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(255, 255, 255, 0.15) 50%,
+        rgba(255, 255, 255, 0.15) 75%,
+        transparent 75%,
+        transparent
+    );
+    background-size: 1rem 1rem;
+    animation: progress-bar-stripes 1s linear infinite;
+}
+
+@keyframes progress-bar-stripes {
+    0% {
+        background-position-x: 1rem;
+    }
+}
+
+/* Loading spinner */
+.spinner {
+    border: 4px solid #f3f4f6;
+    border-top: 4px solid #3b82f6;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* File upload styling */
+.file-upload-hover:hover {
+    background-color: #f8fafc;
+    border-color: #3b82f6;
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-pending {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.status-in-progress {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
+.status-completed {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.status-failed {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+/* Responsive design improvements */
+@media (max-width: 768px) {
+    .container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    
+    .grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .modal-content {
+        width: 95%;
+        margin: 1rem;
+    }
+}
+
+/* Print styles */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    
+    .chapter-content {
+        font-size: 12pt;
+        line-height: 1.5;
+    }
+}
+
+/* Dark mode support (optional) */
+@media (prefers-color-scheme: dark) {
+    .dark-mode-support {
+        /* Add dark mode styles if needed */
+    }
+}
+
+/* Accessibility improvements */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Focus states */
+button:focus,
+input:focus,
+select:focus {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .border-gray-300 {
+        border-color: #000;
+    }
+    
+    .text-gray-600 {
+        color: #000;
+    }
+}

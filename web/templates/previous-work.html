@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Previous Work - EPUB Translator</title>
+    <link href="/static/css/style.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .file-item {
+            transition: all 0.2s;
+        }
+        .file-item:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .file-size {
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="container mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <h1 class="text-xl font-bold text-gray-800">📁 Previous Work</h1>
+                    <span class="text-sm text-gray-600">{{.TotalFiles}} files found</span>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <button id="refresh-btn" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors">
+                        Refresh
+                    </button>
+                    <a href="/" class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition-colors">
+                        Upload New
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container mx-auto px-4 py-6 max-w-6xl">
+        {{if .Files}}
+        <!-- Files Grid -->
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {{range .Files}}
+            <div class="file-item bg-white rounded-lg shadow-md p-4 border border-gray-200">
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex-1 min-w-0">
+                        <h3 class="text-lg font-semibold text-gray-900 truncate" title="{{.Name}}">
+                            {{.Name}}
+                        </h3>
+                        <div class="flex items-center space-x-2 mt-1 text-sm text-gray-500">
+                            <span class="file-size">{{.SizeFormatted}}</span>
+                            <span>•</span>
+                            <span>{{.ModifiedFormatted}}</span>
+                        </div>
+                    </div>
+                    <div class="flex-shrink-0">
+                        {{if .IsEPUB}}
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                            📚 EPUB
+                        </span>
+                        {{else}}
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-600">
+                            📄 File
+                        </span>
+                        {{end}}
+                    </div>
+                </div>
+                
+                <!-- File Actions -->
+                <div class="flex items-center justify-between">
+                    <div class="flex space-x-2">
+                        {{if .IsEPUB}}
+                        <button class="process-btn bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                data-file="{{.Name}}" data-path="{{.Path}}">
+                            Process
+                        </button>
+                        {{end}}
+                        <button class="download-btn bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                data-file="{{.Name}}" data-path="{{.Path}}">
+                            Download
+                        </button>
+                    </div>
+                    <button class="delete-btn text-red-500 hover:text-red-700 p-1 transition-colors"
+                            data-file="{{.Name}}" data-path="{{.Path}}" title="Delete file">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- Additional Info -->
+                {{if .IsEPUB}}
+                <div class="mt-3 pt-3 border-t border-gray-100">
+                    <div class="text-xs text-gray-500">
+                        <div class="flex justify-between">
+                            <span>EPUB Archive</span>
+                            <span>Ready to process</span>
+                        </div>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+            {{end}}
+        </div>
+        
+        <!-- Pagination or Load More (if needed in future) -->
+        {{if gt .TotalFiles 20}}
+        <div class="mt-8 text-center">
+            <p class="text-gray-500 text-sm">Showing {{len .Files}} of {{.TotalFiles}} files</p>
+        </div>
+        {{end}}
+        
+        {{else}}
+        <!-- Empty State -->
+        <div class="text-center py-12">
+            <div class="mb-4">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+            </div>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">No files found</h3>
+            <p class="text-gray-500 mb-6">No EPUB files have been uploaded yet.</p>
+            <a href="/" class="inline-flex items-center bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                </svg>
+                Upload Your First EPUB
+            </a>
+        </div>
+        {{end}}
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                    <svg class="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                    </svg>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900 mb-2">Delete File</h3>
+                <p class="text-gray-600 mb-6">
+                    Are you sure you want to delete "<span id="delete-filename"></span>"?
+                    This action cannot be undone.
+                </p>
+                <div class="flex justify-center space-x-3">
+                    <button id="cancel-delete" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium py-2 px-4 rounded transition-colors">
+                        Cancel
+                    </button>
+                    <button id="confirm-delete" class="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded transition-colors">
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Processing Modal -->
+    <div id="process-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="text-center">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-4"></div>
+                <h3 class="text-lg font-bold text-gray-900 mb-2">Processing EPUB</h3>
+                <p class="text-gray-600 mb-4">
+                    Processing "<span id="process-filename"></span>"...
+                </p>
+                <p class="text-sm text-gray-500">
+                    This may take a few moments.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM elements
+            const refreshBtn = document.getElementById('refresh-btn');
+            const deleteModal = document.getElementById('delete-modal');
+            const processModal = document.getElementById('process-modal');
+            const deleteFilename = document.getElementById('delete-filename');
+            const processFilename = document.getElementById('process-filename');
+            const cancelDeleteBtn = document.getElementById('cancel-delete');
+            const confirmDeleteBtn = document.getElementById('confirm-delete');
+            
+            // State
+            let fileToDelete = null;
+            
+            // Event listeners
+            refreshBtn.addEventListener('click', function() {
+                window.location.reload();
+            });
+            
+            // Process buttons
+            document.querySelectorAll('.process-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const filename = this.dataset.file;
+                    const filepath = this.dataset.path;
+                    processFile(filename, filepath);
+                });
+            });
+            
+            // Download buttons
+            document.querySelectorAll('.download-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const filename = this.dataset.file;
+                    const filepath = this.dataset.path;
+                    downloadFile(filename, filepath);
+                });
+            });
+            
+            // Delete buttons
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const filename = this.dataset.file;
+                    const filepath = this.dataset.path;
+                    showDeleteModal(filename, filepath);
+                });
+            });
+            
+            // Modal event listeners
+            cancelDeleteBtn.addEventListener('click', hideDeleteModal);
+            confirmDeleteBtn.addEventListener('click', confirmDelete);
+            
+            // Close modal on background click
+            deleteModal.addEventListener('click', function(e) {
+                if (e.target === deleteModal) {
+                    hideDeleteModal();
+                }
+            });
+            
+            async function processFile(filename, filepath) {
+                processFilename.textContent = filename;
+                processModal.classList.remove('hidden');
+                
+                try {
+                    const response = await fetch('/api/process-file', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            path: filepath
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (response.ok) {
+                        // Successfully processed - redirect to preview page
+                        window.location.href = result.redirect_url;
+                    } else {
+                        throw new Error(result.error || 'Failed to process file');
+                    }
+                } catch (error) {
+                    console.error('Error processing file:', error);
+                    processModal.classList.add('hidden');
+                    alert(`Failed to process EPUB file: ${error.message}`);
+                }
+            }
+            
+            function downloadFile(filename, filepath) {
+                // Create a temporary link to download the file
+                const link = document.createElement('a');
+                link.href = `/api/download-file?path=${encodeURIComponent(filepath)}`;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+            
+            function showDeleteModal(filename, filepath) {
+                fileToDelete = { filename, filepath };
+                deleteFilename.textContent = filename;
+                deleteModal.classList.remove('hidden');
+            }
+            
+            function hideDeleteModal() {
+                deleteModal.classList.add('hidden');
+                fileToDelete = null;
+            }
+            
+            async function confirmDelete() {
+                if (!fileToDelete) return;
+                
+                try {
+                    const response = await fetch('/api/delete-file', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            path: fileToDelete.filepath
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        // Remove the file item from the page
+                        const fileItems = document.querySelectorAll('.file-item');
+                        fileItems.forEach(item => {
+                            const deleteBtn = item.querySelector('.delete-btn');
+                            if (deleteBtn && deleteBtn.dataset.file === fileToDelete.filename) {
+                                item.remove();
+                            }
+                        });
+                        
+                        // Update file count
+                        const countSpan = document.querySelector('header span');
+                        if (countSpan) {
+                            const currentCount = parseInt(countSpan.textContent.split(' ')[0]);
+                            countSpan.textContent = `${currentCount - 1} files found`;
+                        }
+                        
+                        hideDeleteModal();
+                    } else {
+                        throw new Error('Failed to delete file');
+                    }
+                } catch (error) {
+                    console.error('Error deleting file:', error);
+                    alert('Failed to delete file. Please try again.');
+                }
+            }
+        });
+    </script>
+</body>
+</html>
