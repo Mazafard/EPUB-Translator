@@ -1,0 +1,41 @@
+name: Enhancement/Feature Request
+description: Suggest a new feature or enhancement for EPUB Translator
+labels: enhancement
+body:
+  - type: textarea
+    id: feature
+    attributes:
+      label: What feature would you like to be added?
+      description: |
+        Describe the feature you would like to see in EPUB Translator.
+        For complex features, consider first discussing in the Discussions tab.
+      placeholder: |
+        Example:
+        - Support for additional translation services (DeepL, Azure Translator)
+        - Ability to preserve original formatting in translations
+        - Batch processing of multiple EPUB files
+        - Translation memory/glossary support
+    validations:
+      required: true
+
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Why is this needed?
+      description: Explain the use case and how this feature would benefit users.
+      placeholder: This feature would help by...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any alternative solutions or workarounds?
+      placeholder: I've considered... but it doesn't solve the problem because...
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Add any other context, screenshots, or examples about the feature request.

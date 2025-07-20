@@ -1,0 +1,33 @@
+version: 2
+
+updates:
+  - # Keep develop branch dependencies up to date
+    package-ecosystem: "gomod"
+    target-branch: "develop"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    groups:
+      go-dependencies:
+        patterns:
+          - "github.com/gin-gonic/*"
+          - "github.com/sirupsen/*"
+          - "github.com/sashabaranov/*"
+          - "github.com/google/*"
+  - package-ecosystem: "gomod"
+    target-branch: "main"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    groups:
+      go-dependencies:
+        patterns:
+          - "github.com/gin-gonic/*"
+          - "github.com/sirupsen/*"
+          - "github.com/sashabaranov/*"
+          - "github.com/google/*"
+  - package-ecosystem: "github-actions"
+    target-branch: "main"
+    directory: "/"
+    schedule:
+      interval: "daily"

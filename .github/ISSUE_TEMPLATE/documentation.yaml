@@ -1,0 +1,44 @@
+name: Documentation Issue
+description: Report any mistakes or missing information from the documentation or examples
+labels: documentation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        📚 **Documentation Issue**
+        Please help us improve the documentation for EPUB Translator by reporting errors, unclear sections, or missing information.
+
+  - type: textarea
+    id: documentation_issue
+    attributes:
+      label: What documentation issue did you find?
+      description: |
+        Describe the problem with the existing documentation or what information is missing.
+        Please include a link to the specific documentation if applicable.
+      placeholder: |
+        Example:
+        - The installation instructions are missing step X
+        - The API documentation for endpoint Y is incorrect
+        - Missing examples for configuration Z
+        - README section about Persian fonts is outdated
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_documentation
+    attributes:
+      label: What should the documentation say instead?
+      description: If you know what the correct information should be, please share it here.
+      placeholder: The documentation should explain that...
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Add any other context about the documentation issue here.
+      placeholder: This affects users who are trying to...
+    validations:
+      required: false
+

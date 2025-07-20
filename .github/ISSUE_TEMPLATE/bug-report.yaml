@@ -1,0 +1,93 @@
+name: Bug Report
+description: Report a bug encountered in EPUB Translator
+labels: bug
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: |
+        Please provide as much info as possible. Not doing so may result in your bug not being addressed in a timely manner.
+      placeholder: |
+        Example:
+        - Translation failed with error message "..."
+        - EPUB file became corrupted after translation
+        - Persian fonts not displaying correctly in translated output
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      placeholder: I expected the EPUB to be translated successfully with proper formatting...
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How can we reproduce it (as minimally and precisely as possible)?
+      description: |
+        Please list steps someone can follow to trigger the issue.
+        
+        For example:
+        1. Upload EPUB file "example.epub"
+        2. Select source language "English" and target language "Persian"
+        3. Click "Start Translation"
+        4. Observe the following error: ...
+
+        You can include:
+        - EPUB file details (size, format, source)
+        - Configuration settings used
+        - Browser and OS information
+
+        This helps others reproduce and debug your issue more effectively.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      value: |
+        <details>
+        
+        **EPUB Translator Version:**
+        ```
+        # Version information (check About page or server logs)
+        ```
+        
+        **Browser:**
+        ```
+        # Browser name and version
+        ```
+        
+        **Operating System:**
+        ```
+        # OS name and version
+        ```
+        
+        **EPUB Details:**
+        ```
+        # File size, source language, target language, number of chapters
+        ```
+        
+        </details>
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Please include any relevant log output from the browser console or server logs.
+      value: |
+        <details>
+        
+        ```
+        # Paste relevant logs here
+        ```
+        
+        </details>
