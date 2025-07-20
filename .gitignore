@@ -16,8 +16,8 @@ go.work.sum
 # Build outputs
 /bin/
 /dist/
-config.json
-
+ignore/config.json
+ignore
 
 # Dependencies
 vendor/
