@@ -179,10 +179,10 @@ func (b *Builder) createZip(sourceDir, outputPath string) error {
 	if err != nil {
 		return err
 	}
-	defer zipFile.Close()
+	defer func() { _ = zipFile.Close() }()
 
 	zipWriter := zip.NewWriter(zipFile)
-	defer zipWriter.Close()
+	defer func() { _ = zipWriter.Close() }()
 
 	if err := b.writeMimetypeFile(zipWriter); err != nil {
 		return err
@@ -228,7 +228,7 @@ func (b *Builder) addFileToZip(zipWriter *zip.Writer, filePath, relPath string) 
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	writer, err := zipWriter.Create(relPath)
 	if err != nil {

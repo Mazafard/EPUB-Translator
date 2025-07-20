@@ -1,0 +1,38 @@
+# Ignore unnecessary files for Docker build
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore
+
+# Local development files
+config.json
+*.log
+
+# Build artifacts
+epub-translator
+*.exe
+
+# Temporary directories
+tmp/*
+output/*
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Dependencies that will be downloaded in container
+vendor/
+
+# Test files
+*_test.go
+coverage.out
+
+# GitHub Actions
+.github/

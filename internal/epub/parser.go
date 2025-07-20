@@ -105,7 +105,7 @@ func (p *Parser) extractZip(src, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	for _, file := range reader.File {
 		if err := p.extractFile(file, dest); err != nil {
@@ -121,7 +121,7 @@ func (p *Parser) extractFile(file *zip.File, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	path := filepath.Join(dest, file.Name)
 
@@ -137,7 +137,7 @@ func (p *Parser) extractFile(file *zip.File, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	_, err = io.Copy(outFile, rc)
 	return err
@@ -451,13 +451,13 @@ func (p *Parser) copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return err
@@ -518,31 +518,6 @@ func (p *Parser) SaveTranslatedChapter(epubID, chapterPath, translatedContent, t
 	return nil
 }
 
-// replaceBodyContent replaces the body content in an HTML file while preserving the structure
-func (p *Parser) replaceBodyContent(originalHTML, newBodyContent string) (string, error) {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(originalHTML))
-	if err != nil {
-		return "", err
-	}
-
-	// Find the body element and replace its content
-	body := doc.Find("body")
-	if body.Length() > 0 {
-		body.SetHtml(newBodyContent)
-	} else {
-		// If no body tag, wrap the new content in the original structure
-		return newBodyContent, nil
-	}
-
-	// Return the complete HTML document
-	html, err := doc.Html()
-	if err != nil {
-		return "", err
-	}
-
-	return html, nil
-}
-
 // CreateTranslatedCopyWithLanguage creates a language-specific copy of the EPUB directory for storing translations
 func (p *Parser) CreateTranslatedCopyWithLanguage(epubID, targetLang string) (string, error) {
 	sourceDir := filepath.Join(p.tempDir, epubID)
@@ -596,7 +571,7 @@ func (p *Parser) replaceBodyContentWithLanguageSupport(originalHTML, newBodyCont
 	// Add inline CSS for immediate RTL support if needed
 	if isRTL {
 
-		rtlCSS := fmt.Sprintf(`<style type="text/css">
+		rtlCSS := `<style type="text/css">
 body {
     direction: rtl;
     text-align: right;
@@ -620,7 +595,7 @@ th, td {
     direction: rtl;
     text-align: right;
 }
-</style>`)
+</style>`
 		head.AppendHtml(rtlCSS)
 	}
 

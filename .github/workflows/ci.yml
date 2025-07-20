@@ -89,7 +89,7 @@ jobs:
         go build -v -ldflags="-s -w" -o epub-translator ./cmd/epub-translator
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: epub-translator-${{ github.sha }}
         path: epub-translator

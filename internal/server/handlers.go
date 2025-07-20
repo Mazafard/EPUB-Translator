@@ -291,7 +291,7 @@ func (s *Server) handleDownloadTranslated(c *gin.Context) {
 	// Clean up the created file after sending (optional)
 	go func() {
 		time.Sleep(30 * time.Second) // Give some time for download to complete
-		os.Remove(outputPath)
+		_ = os.Remove(outputPath)
 	}()
 }
 
@@ -357,7 +357,7 @@ func (s *Server) handleDownloadProcessed(c *gin.Context) {
 	// Clean up the created file after sending
 	go func() {
 		time.Sleep(30 * time.Second)
-		os.Remove(outputPath)
+		_ = os.Remove(outputPath)
 	}()
 }
 
@@ -372,10 +372,10 @@ func (s *Server) createEPUBFromDirectory(sourceDir, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer zipFile.Close()
+	defer func() { _ = zipFile.Close() }()
 
 	zipWriter := zip.NewWriter(zipFile)
-	defer zipWriter.Close()
+	defer func() { _ = zipWriter.Close() }()
 
 	// Write mimetype file first (uncompressed)
 	writer, err := zipWriter.CreateHeader(&zip.FileHeader{
@@ -416,7 +416,7 @@ func (s *Server) createEPUBFromDirectory(sourceDir, outputPath string) error {
 		if err != nil {
 			return fmt.Errorf("failed to open source file %s: %w", path, err)
 		}
-		defer sourceFile.Close()
+		defer func() { _ = sourceFile.Close() }()
 
 		// Create entry in zip
 		zipEntry, err := zipWriter.Create(relPath)
