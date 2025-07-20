@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const chaptersCompleted = document.getElementById('chapters-completed');
     const downloadBtn = document.getElementById('download-btn');
     const errorDetails = document.getElementById('error-details');
+    const exportEpubBtn = document.getElementById('export-epub-btn');
     
     // New elements for enhanced preview
     const chapterNavItems = document.querySelectorAll('.chapter-nav-item');
@@ -60,7 +61,23 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     downloadBtn.addEventListener('click', function() {
-        window.location.href = `/download/${epubId}`;
+        const targetLang = currentTargetLanguage || targetLanguageSelect.value;
+        if (!targetLang) {
+            showTranslationAlert('Cannot determine target language for download.', 'error');
+            return;
+        }
+        window.location.href = `/download-translated/${epubId}/${targetLang}`;
+    });
+
+    exportEpubBtn.addEventListener('click', function() {
+        // This will download the current state of the processed EPUB, including any single-page translations.
+        const targetLang = currentTargetLanguage || targetLanguageSelect.value;
+        if (!targetLang) {
+            showTranslationAlert('Please select a language. The downloaded file will be configured for this language.', 'warning');
+            return;
+        }
+        addLog('info', `Preparing download for language: ${targetLang}`);
+        window.location.href = `/download/processed/${epubId}/${targetLang}`;
     });
     
     // Chapter navigation

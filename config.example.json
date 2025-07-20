@@ -6,9 +6,9 @@
   },
   "openai": {
     "api_key": "your-openai-api-key-here",
-    "model": "gpt-3.5-turbo",
+    "model": "gpt-4o",
     "max_tokens": 2048,
-    "temperature": 0.3
+    "temperature": 0.4
   },
   "translation": {
     "batch_size": 10,

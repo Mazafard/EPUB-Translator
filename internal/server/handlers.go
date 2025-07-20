@@ -295,6 +295,72 @@ func (s *Server) handleDownloadTranslated(c *gin.Context) {
 	}()
 }
 
+func (s *Server) handleDownloadProcessed(c *gin.Context) {
+	id := c.Param("id")
+	targetLang := c.Param("lang")
+
+	if targetLang == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Target language is required for processed download"})
+		return
+	}
+
+	// Load EPUB content
+	epubContent, exists := s.epubStorage[id]
+	if !exists {
+		loadedEpub, err := s.epubParser.LoadFromDirectory(id)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "EPUB not found"})
+			return
+		}
+		s.epubStorage[id] = loadedEpub
+		epubContent = loadedEpub
+	}
+
+	// Use the language-specific translated directory if it exists, otherwise use the original.
+	// This allows downloading a partially translated book.
+	translatedDir := filepath.Join(s.config.App.TempDir, fmt.Sprintf("%s_translated_%s", id, targetLang))
+	sourceDir := filepath.Join(s.config.App.TempDir, id)
+
+	var packageDir string
+	if _, err := os.Stat(translatedDir); err == nil {
+		s.logger.Infof("Found translated directory for language %s, packaging it.", targetLang)
+		packageDir = translatedDir
+	} else {
+		s.logger.Infof("No translated directory found for language %s, packaging original.", targetLang)
+		packageDir = sourceDir
+	}
+
+	// Create output filename
+	title := epubContent.Package.Metadata.Title
+	if title == "" {
+		title = fmt.Sprintf("epub_%s", id)
+	}
+	filename := fmt.Sprintf("%s_processed_%s.epub", sanitizeFilename(title), targetLang)
+	outputPath := filepath.Join(s.config.App.OutputDir, filename)
+
+	// Create the EPUB from the chosen directory
+	if err := s.createEPUBFromDirectory(packageDir, outputPath); err != nil {
+		s.logger.Errorf("Failed to create processed EPUB from directory: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create processed EPUB file"})
+		return
+	}
+
+	// Set download headers
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	c.Header("Content-Type", "application/epub+zip")
+
+	// Send the file
+	c.File(outputPath)
+
+	// Clean up the created file after sending
+	go func() {
+		time.Sleep(30 * time.Second)
+		os.Remove(outputPath)
+	}()
+}
+
 func (s *Server) createEPUBFromDirectory(sourceDir, outputPath string) error {
 	// Ensure output directory exists
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {

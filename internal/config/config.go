@@ -77,9 +77,9 @@ func New() *Config {
 			MaxTokens   int     `json:"max_tokens"`
 			Temperature float32 `json:"temperature"`
 		}{
-			Model:       "gpt-3.5-turbo",
+			Model:       "gpt-4o",
 			MaxTokens:   2048,
-			Temperature: 0.3,
+			Temperature: 0.4,
 		},
 		Translation: struct {
 			BatchSize      int      `json:"batch_size"`

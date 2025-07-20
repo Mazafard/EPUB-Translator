@@ -129,7 +129,19 @@ func (c *OpenAIClient) TranslateText(text, sourceLang, targetLang string) (strin
 			sourceLanguage := getLanguageName(sourceLang)
 			targetLanguage := getLanguageName(targetLang)
 
-			prompt := fmt.Sprintf(`Translate the following text from %s to %s. Maintain the original tone, style, and formatting as much as possible. Return only the translated text without any additional comments or explanations.\n\nText: %s`, sourceLanguage, targetLanguage, chunkText)
+			//prompt := fmt.Sprintf(`Translate the following text from %s to %s. Maintain the original tone, style, and formatting as much as possible. Return only the translated text without any additional comments or explanations.\n\nText: %s`, sourceLanguage, targetLanguage, chunkText)
+			prompt := fmt.Sprintf(`You are a professional book translator. Translate the following text from %s to %s.
+
+Ensure the translation is:
+- Smooth and natural in the target language
+- Clear and easy to understand for native readers
+- Faithful to the tone, style, and voice of the original author
+- Respectful of formatting, punctuation, and paragraph structure
+
+Do not add explanations or comments. Return only the translated text.
+
+Text to translate:
+%s`, sourceLanguage, targetLanguage, chunkText)
 
 			requestContext := map[string]interface{}{
 				"source_lang":        sourceLang,
