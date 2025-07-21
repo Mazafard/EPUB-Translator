@@ -261,5 +261,8 @@ For support and questions:
 - Review the documentation
 
 ---
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Mazafard/EPUB-Translator&type=Date)](https://www.star-history.com/#Mazafard/EPUB-Translator&Date)
 
 Made with ❤️ using Go
