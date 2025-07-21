@@ -102,6 +102,8 @@ func (s *Server) setupRoutes() {
 	s.router.GET("/api/chapter/:epub_id/:chapter_id", s.handleGetChapter)
 	s.router.POST("/api/translate-page", s.handleTranslatePage)
 	s.router.GET("/reader/:id", s.handleReader)
+	s.router.GET("/reader/:id/:chapter", s.handleReader)
+	s.router.GET("/reader/:id/:chapter/:mode", s.handleReader)
 
 	// Previous work endpoints
 	s.router.GET("/previous-work", s.handlePreviousWork)

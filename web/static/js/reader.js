@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const chapterControls = document.getElementById('chapter-controls');
     const translatePageBtn = document.getElementById('translate-page-btn');
     const toggleViewBtn = document.getElementById('toggle-view-btn');
+    const sideBySideBtn = document.getElementById('side-by-side-btn');
     const targetLanguageSelect = document.getElementById('target-language');
     const translationStatus = document.getElementById('translation-status');
     const translationModal = document.getElementById('translation-modal');
@@ -26,8 +27,50 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentChapter = null;
     let currentChapterData = null;
     let showingTranslated = false;
+    let currentMode = 'original'; // 'original', 'translated', 'side-by-side'
     let websocket = null;
     let isTranslating = false;
+    
+    // Fix image and media paths in HTML content for display
+    function fixImagePaths(htmlContent) {
+        if (!htmlContent) return htmlContent;
+        
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = htmlContent;
+        
+        // Fix image sources
+        const images = tempDiv.querySelectorAll('img[src]');
+        images.forEach(img => {
+            const src = img.getAttribute('src');
+            // Only fix relative paths, not absolute URLs or already fixed paths
+            if (src && !src.startsWith('http') && !src.startsWith('/')) {
+                const newSrc = `/epub_files/${epubId}/OEBPS/${src}`;
+                img.setAttribute('src', newSrc);
+            }
+        });
+        
+        // Fix CSS links
+        const links = tempDiv.querySelectorAll('link[href]');
+        links.forEach(link => {
+            const href = link.getAttribute('href');
+            if (href && !href.startsWith('http') && !href.startsWith('/')) {
+                const newHref = `/epub_files/${epubId}/OEBPS/${href}`;
+                link.setAttribute('href', newHref);
+            }
+        });
+        
+        // Fix audio/video sources
+        const mediaSources = tempDiv.querySelectorAll('audio[src], video[src], source[src]');
+        mediaSources.forEach(media => {
+            const src = media.getAttribute('src');
+            if (src && !src.startsWith('http') && !src.startsWith('/')) {
+                const newSrc = `/epub_files/${epubId}/OEBPS/${src}`;
+                media.setAttribute('src', newSrc);
+            }
+        });
+        
+        return tempDiv.innerHTML;
+    }
     
     // Initialize WebSocket connection
     initWebSocket();
@@ -38,7 +81,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     translatePageBtn.addEventListener('click', translateCurrentPage);
-    toggleViewBtn.addEventListener('click', toggleTranslatedView);
+    toggleViewBtn.addEventListener('click', () => setViewMode('translated'));
+    sideBySideBtn.addEventListener('click', () => setViewMode('side-by-side'));
     toggleLogsBtn.addEventListener('click', toggleLogsPanel);
     clearLogsBtn.addEventListener('click', clearLogs);
     
@@ -149,11 +193,22 @@ document.addEventListener('DOMContentLoaded', function() {
     function toggleLogsPanel() {
         logsPanel.classList.toggle('hidden');
         
+        // Get the main grid container
+        const mainGrid = document.getElementById('main-grid');
+        
         if (!logsPanel.classList.contains('hidden')) {
+            // Logs panel is now visible
+            mainGrid.classList.remove('logs-hidden');
+            mainGrid.classList.add('logs-visible');
+            
             // Scroll to bottom when opening
             setTimeout(() => {
                 logsContainer.scrollTop = logsContainer.scrollHeight;
             }, 100);
+        } else {
+            // Logs panel is now hidden
+            mainGrid.classList.remove('logs-visible');
+            mainGrid.classList.add('logs-hidden');
         }
     }
     
@@ -178,7 +233,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Update UI
             currentChapterTitle.textContent = chapterData.title;
-            chapterContent.innerHTML = chapterData.content || '<p class="text-gray-500">No content available</p>';
             chapterControls.classList.remove('hidden');
             
             // Update sidebar selection
@@ -192,7 +246,11 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Update button states
             updateTranslateButtonState();
-            updateToggleViewButton();
+            updateViewButtons();
+            
+            // Render current mode
+            renderCurrentMode();
+            updateURL();
             
             translationStatus.textContent = chapterData.is_translated ? 'Translated' : 'Original';
             
@@ -338,23 +396,131 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    function toggleTranslatedView() {
-        if (!currentChapterData || !currentChapterData.is_translated) return;
+    // URL management functions
+    function updateURL() {
+        if (!currentChapter) return;
         
-        showingTranslated = !showingTranslated;
+        const newPath = `/reader/${epubId}/${currentChapter}/${currentMode}`;
+        window.history.pushState({ 
+            chapter: currentChapter, 
+            mode: currentMode 
+        }, '', newPath);
+    }
+    
+    function setViewMode(mode) {
+        if (!currentChapterData) return;
         
-        if (showingTranslated && currentChapterData.translated_content) {
-            chapterContent.innerHTML = currentChapterData.translated_content;
-            chapterContent.classList.add('rtl'); // Assuming translation might be RTL
-        } else {
-            chapterContent.innerHTML = currentChapterData.content;
-            chapterContent.classList.remove('rtl');
+        // Validate mode
+        const validModes = ['original', 'translated', 'side-by-side'];
+        if (!validModes.includes(mode)) {
+            mode = 'original';
         }
         
-        updateToggleViewButton();
+        // Check if translation is available for translated/side-by-side modes
+        if ((mode === 'translated' || mode === 'side-by-side') && !currentChapterData.is_translated) {
+            addLog('warn', 'No translation available for this chapter', 'reader');
+            return;
+        }
         
-        const viewType = showingTranslated ? 'translated' : 'original';
-        addLog('info', `Switched to ${viewType} view`, 'reader');
+        currentMode = mode;
+        updateURL();
+        renderCurrentMode();
+        updateViewButtons();
+        
+        addLog('info', `Switched to ${mode} view`, 'reader');
+    }
+    
+    function renderCurrentMode() {
+        if (!currentChapterData) return;
+        
+        switch (currentMode) {
+            case 'original':
+                renderOriginalView();
+                break;
+            case 'translated':
+                renderTranslatedView();
+                break;
+            case 'side-by-side':
+                renderSideBySideView();
+                break;
+        }
+    }
+    
+    function renderOriginalView() {
+        const content = currentChapterData.content || '<p class="text-gray-500">No content available</p>';
+        chapterContent.innerHTML = fixImagePaths(content);
+        chapterContent.classList.remove('rtl');
+        chapterContent.className = 'chapter-content prose max-w-none';
+    }
+    
+    function renderTranslatedView() {
+        if (currentChapterData.translated_content) {
+            chapterContent.innerHTML = currentChapterData.translated_content;
+            chapterContent.classList.add('rtl');
+        } else {
+            chapterContent.innerHTML = '<p class="text-gray-500">No translation available</p>';
+        }
+        chapterContent.className = 'chapter-content prose max-w-none';
+    }
+    
+    function renderSideBySideView() {
+        const originalContent = currentChapterData.content || '<p class="text-gray-500">No content available</p>';
+        const translatedContent = currentChapterData.translated_content || '<p class="text-gray-500">No translation available</p>';
+        
+        chapterContent.className = 'side-by-side-container';
+        chapterContent.innerHTML = `
+            <div class="side-by-side-column">
+                <div class="side-by-side-header">Original</div>
+                <div class="side-by-side-content ltr">${fixImagePaths(originalContent)}</div>
+            </div>
+            <div class="side-by-side-column">
+                <div class="side-by-side-header">Translation</div>
+                <div class="side-by-side-content rtl">${translatedContent}</div>
+            </div>
+        `;
+    }
+    
+    function updateViewButtons() {
+        if (!currentChapterData) return;
+        
+        // Update button states based on current mode
+        toggleViewBtn.classList.remove('bg-blue-500', 'bg-gray-500');
+        sideBySideBtn.classList.remove('bg-purple-500', 'bg-gray-500');
+        
+        if (currentMode === 'translated') {
+            toggleViewBtn.classList.add('bg-blue-500');
+            toggleViewBtn.textContent = 'Show Original';
+        } else {
+            toggleViewBtn.classList.add('bg-gray-500');
+            toggleViewBtn.textContent = 'Show Translated';
+        }
+        
+        if (currentMode === 'side-by-side') {
+            sideBySideBtn.classList.add('bg-purple-500');
+            sideBySideBtn.textContent = 'Single View';
+        } else {
+            sideBySideBtn.classList.add('bg-purple-500');
+            sideBySideBtn.textContent = 'Side by Side';
+        }
+        
+        // Enable/disable buttons based on translation availability
+        const hasTranslation = currentChapterData.is_translated;
+        toggleViewBtn.disabled = !hasTranslation;
+        sideBySideBtn.disabled = !hasTranslation;
+        
+        if (!hasTranslation) {
+            toggleViewBtn.textContent = 'No Translation';
+            sideBySideBtn.textContent = 'No Translation';
+        }
+    }
+    
+    function toggleTranslatedView() {
+        // This function is kept for backward compatibility
+        if (currentMode === 'translated') {
+            setViewMode('original');
+        } else {
+            setViewMode('translated');
+        }
     }
     
     // Keyboard shortcuts
@@ -390,7 +556,31 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Initialize with first chapter if available
+    // Initialize from URL parameters
+    function initializeFromURL() {
+        if (initialChapter && initialChapter !== '') {
+            currentMode = initialMode || 'original';
+            loadChapter(initialChapter);
+            addLog('info', `Initialized with chapter: ${initialChapter}, mode: ${currentMode}`, 'reader');
+        } else if (chapterItems.length > 0) {
+            // Load first chapter if no URL parameters
+            const firstChapter = chapterItems[0].dataset.chapterId;
+            loadChapter(firstChapter);
+        }
+    }
+    
+    // Handle browser back/forward navigation
+    window.addEventListener('popstate', function(event) {
+        if (event.state && event.state.chapter && event.state.mode) {
+            currentMode = event.state.mode;
+            loadChapter(event.state.chapter);
+            addLog('info', `Navigated to chapter: ${event.state.chapter}, mode: ${event.state.mode}`, 'reader');
+        }
+    });
+    
+    // Initialize with URL parameters or first chapter
+    initializeFromURL();
+    
     if (chapterItems.length > 0) {
         addLog('info', 'Reader initialized successfully', 'system');
         addLog('info', 'Keyboard shortcuts: Ctrl+L (logs), Ctrl+T (translate), Ctrl+Shift+T (toggle view)', 'system');

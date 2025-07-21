@@ -209,35 +209,34 @@ func (p *Parser) extractChapters(epub *EPUB) error {
 		//// Rewrite media URLs in the content
 		rewrittenContent := p.rewriteMediaURLs(content, epub.ID, packageDirRelative)
 
-		// Check for translated content in the _translated folder
+		// Detect all available translations for this chapter
+		translations := p.detectChapterTranslations(epub.ID, item.Href, packageDirRelative)
+
+		// For backward compatibility, use the first available translation as default
 		translatedContent := ""
-		isTranslated := false
+		isTranslated := len(translations.Languages) > 0
 
-		// Check if there's a translated version of this chapter
-		translatedDir := filepath.Join(p.tempDir, epub.ID+"_translated")
-		translatedChapterPath := filepath.Join(translatedDir, filepath.Dir(epub.Package.OriginalPath), item.Href)
-
-		if _, err := os.Stat(translatedChapterPath); err == nil {
-			// Translated file exists, load it
-			if translatedFileContent, err := p.extractChapterContent(translatedChapterPath); err == nil {
-				translatedContent = p.rewriteMediaURLs(translatedFileContent, epub.ID, packageDirRelative)
-				isTranslated = true
-				p.logger.Debugf("Loaded translated content for chapter: %s", translatedChapterPath)
-			} else {
-				p.logger.Warnf("Failed to load translated content from %s: %v", translatedChapterPath, err)
+		// If there are translations, load the first one for display
+		if isTranslated {
+			for lang, content := range translations.Content {
+				translatedContent = content
+				p.logger.Debugf("Loaded translated content for chapter %s in language: %s", item.Href, lang)
+				break // Use first available translation
 			}
 		}
 
 		chapter := Chapter{
-			ID:                fmt.Sprintf("%s_%d", epub.ID, order),
-			Title:             p.extractTitle(content), // Use original content for title extraction
-			FilePath:          chapterPath,
-			RelativePath:      item.Href,
-			Content:           rewrittenContent, // Use rewritten content for display
-			TranslatedContent: translatedContent,
-			Order:             order,
-			WordCount:         countWords(content), // Use original content for word count
-			IsTranslated:      isTranslated,
+			ID:                    fmt.Sprintf("%s_%d", epub.ID, order),
+			Title:                 p.extractTitle(content), // Use original content for title extraction
+			FilePath:              chapterPath,
+			RelativePath:          item.Href,
+			Content:               rewrittenContent, // Use rewritten content for display
+			TranslatedContent:     translatedContent,
+			Order:                 order,
+			WordCount:             countWords(content), // Use original content for word count
+			IsTranslated:          isTranslated,
+			AvailableTranslations: translations.Languages,
+			TranslationPaths:      translations.Files,
 		}
 
 		epub.Chapters = append(epub.Chapters, chapter)
@@ -382,6 +381,64 @@ func countWords(text string) int {
 
 func generateID() string {
 	return fmt.Sprintf("epub_%d", time.Now().Unix())
+}
+
+// ChapterTranslations holds information about available translations for a chapter
+type ChapterTranslations struct {
+	Languages map[string]bool   // lang -> exists
+	Files     map[string]string // lang -> file path
+	Content   map[string]string // lang -> translated content
+}
+
+// detectChapterTranslations scans for all available translations of a chapter
+func (p *Parser) detectChapterTranslations(epubID, chapterRelativePath, packageDirRelative string) *ChapterTranslations {
+	translations := &ChapterTranslations{
+		Languages: make(map[string]bool),
+		Files:     make(map[string]string),
+		Content:   make(map[string]string),
+	}
+
+	// Pattern to find all _translated_{lang} directories
+	pattern := filepath.Join(p.tempDir, epubID+"_translated_*")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		p.logger.Warnf("Failed to glob for translated directories: %v", err)
+		return translations
+	}
+
+	for _, dir := range matches {
+		// Extract language from directory name (e.g., epub_123_translated_fa -> fa)
+		parts := strings.Split(filepath.Base(dir), "_")
+		if len(parts) < 3 {
+			continue
+		}
+
+		lang := parts[len(parts)-1] // Get the last part (language code)
+		if lang == "" {
+			continue
+		}
+
+		// Construct the path to the translated chapter file
+		chapterPath := filepath.Join(dir, packageDirRelative, chapterRelativePath)
+
+		// Check if the translated file exists
+		if _, err := os.Stat(chapterPath); err == nil {
+			translations.Languages[lang] = true
+			translations.Files[lang] = chapterPath
+
+			// Load the translated content
+			if content, err := p.extractChapterContent(chapterPath); err == nil {
+				// Rewrite URLs in the translated content
+				rewrittenContent := p.rewriteMediaURLs(content, epubID+"_translated_"+lang, packageDirRelative)
+				translations.Content[lang] = rewrittenContent
+				p.logger.Debugf("Detected translation for chapter %s in language: %s", chapterRelativePath, lang)
+			} else {
+				p.logger.Warnf("Failed to load translated content for %s in %s: %v", chapterRelativePath, lang, err)
+			}
+		}
+	}
+
+	return translations
 }
 
 // CreateTranslatedCopy creates a copy of the EPUB directory for storing translations

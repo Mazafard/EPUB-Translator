@@ -43,6 +43,47 @@ document.addEventListener('DOMContentLoaded', function() {
     const maxReconnectAttempts = 5;
     let currentTargetLanguage = null;
     
+    // Fix image and media paths in HTML content for display
+    function fixImagePaths(htmlContent) {
+        if (!htmlContent) return htmlContent;
+        
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = htmlContent;
+        
+        // Fix image sources
+        const images = tempDiv.querySelectorAll('img[src]');
+        images.forEach(img => {
+            const src = img.getAttribute('src');
+            // Only fix relative paths, not absolute URLs or already fixed paths
+            if (src && !src.startsWith('http') && !src.startsWith('/')) {
+                const newSrc = `/epub_files/${epubId}/OEBPS/${src}`;
+                img.setAttribute('src', newSrc);
+            }
+        });
+        
+        // Fix CSS links
+        const links = tempDiv.querySelectorAll('link[href]');
+        links.forEach(link => {
+            const href = link.getAttribute('href');
+            if (href && !href.startsWith('http') && !href.startsWith('/')) {
+                const newHref = `/epub_files/${epubId}/OEBPS/${href}`;
+                link.setAttribute('href', newHref);
+            }
+        });
+        
+        // Fix audio/video sources
+        const mediaSources = tempDiv.querySelectorAll('audio[src], video[src], source[src]');
+        mediaSources.forEach(media => {
+            const src = media.getAttribute('src');
+            if (src && !src.startsWith('http') && !src.startsWith('/')) {
+                const newSrc = `/epub_files/${epubId}/OEBPS/${src}`;
+                media.setAttribute('src', newSrc);
+            }
+        });
+        
+        return tempDiv.innerHTML;
+    }
+    
     // Initialize the page
     initializePage();
     
@@ -140,7 +181,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     async function loadAllChapters() {
         try {
-            const response = await fetch(`/api/chapters/${epubId}?limit=50`);
+            const response = await fetch(`/api/chapters/${epubId}`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -288,9 +329,15 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         const chaptersHtml = chapters.map(chapter => {
-            const content = showingTranslated && chapter.translated_content ? 
-                            chapter.translated_content : 
-                            (chapter.content || '<p class="text-gray-500">Content not available</p>');
+            let content;
+            if (showingTranslated && chapter.translated_content) {
+                // Use translated content as-is
+                content = chapter.translated_content;
+            } else {
+                // Fix image paths in original content
+                const originalContent = chapter.content || '<p class="text-gray-500">Content not available</p>';
+                content = fixImagePaths(originalContent);
+            }
             
             const statusBadge = chapter.is_translated ? 
                 '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 mb-2">Translated</span>' :
@@ -319,9 +366,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function renderSingleChapter(chapter) {
-        const content = showingTranslated && chapter.translated_content ? 
-                        chapter.translated_content : 
-                        (chapter.content || '<p class="text-gray-500">Content not available</p>');
+        let content;
+        if (showingTranslated && chapter.translated_content) {
+            // Use translated content as-is
+            content = chapter.translated_content;
+        } else {
+            // Fix image paths in original content
+            const originalContent = chapter.content || '<p class="text-gray-500">Content not available</p>';
+            content = fixImagePaths(originalContent);
+        }
         
         const statusBadge = chapter.is_translated ? 
             '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 mb-2">Translated</span>' :
@@ -372,33 +425,126 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function startTranslation(targetLang) {
-        fetch('/translate', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                id: epubId,
-                target_lang: targetLang
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            // Hide translation settings and show progress
-            startTranslationBtn.style.display = 'none';
-            targetLanguageSelect.disabled = true;
-            translationProgress.classList.remove('hidden');
-
-            // Start polling for progress
-            pollTranslationStatus();
-        })
-        .catch(error => {
-            showTranslationError(error.message || 'Failed to start translation');
+        // Store the target language for this translation session
+        currentTargetLanguage = targetLang;
+        
+        // Hide translation settings and show progress
+        startTranslationBtn.style.display = 'none';
+        targetLanguageSelect.disabled = true;
+        translationProgress.classList.remove('hidden');
+        
+        // Find the first untranslated chapter to start from
+        let currentChapterIndex = chaptersData.findIndex(chapter => !chapter.is_translated);
+        
+        if (currentChapterIndex === -1) {
+            // All chapters are already translated
+            addLog('info', 'All chapters are already translated!');
+            showTranslationAlert('All chapters are already translated! No translation needed.', 'info');
+            
+            // Reset UI
+            startTranslationBtn.style.display = 'block';
+            targetLanguageSelect.disabled = false;
+            translationProgress.classList.add('hidden');
+            return;
+        }
+        
+        // Initialize progress tracking
+        let totalChapters = chaptersData.length;
+        let alreadyTranslatedCount = currentChapterIndex; // Chapters before the first untranslated one
+        let completedChapters = alreadyTranslatedCount; // Start counting from already translated chapters
+        let remainingChapters = totalChapters - currentChapterIndex;
+        
+        // Update initial progress
+        updateProgress({
+            progress_percentage: (alreadyTranslatedCount / totalChapters) * 100,
+            current_chapter: `Starting from chapter ${currentChapterIndex + 1} (${remainingChapters} remaining)`,
+            completed_chapters: alreadyTranslatedCount,
+            total_chapters: totalChapters
         });
+        
+        addLog('info', `Starting sequential translation from chapter ${currentChapterIndex + 1}/${totalChapters} (skipping ${alreadyTranslatedCount} already translated)`);
+        addLog('info', `${remainingChapters} chapters remaining to translate to ${targetLang}`);
+        
+        // Function to translate chapters one by one
+        async function translateNextChapter() {
+            if (currentChapterIndex >= totalChapters) {
+                // All chapters completed
+                showTranslationComplete();
+                return;
+            }
+            
+            const chapter = chaptersData[currentChapterIndex];
+            
+            try {
+                // Update progress for current chapter
+                updateProgress({
+                    progress_percentage: (completedChapters / totalChapters) * 100,
+                    current_chapter: `Translating: ${chapter.title} (${completedChapters + 1}/${totalChapters})`,
+                    completed_chapters: completedChapters,
+                    total_chapters: totalChapters
+                });
+                
+                addLog('info', `Translating chapter ${currentChapterIndex + 1}/${totalChapters}: ${chapter.title}`);
+                
+                // Make translation request
+                const response = await fetch('/api/translate-page', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        epub_id: epubId,
+                        chapter_id: chapter.id,
+                        content: chapter.content || '',
+                        target_lang: targetLang
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(result.error || 'Translation request failed');
+                }
+                
+                addLog('info', `Translation request sent for: ${chapter.title}`);
+                
+                // Wait for WebSocket confirmation before proceeding to next chapter
+                // The WebSocket handler will call continueTranslation() when done
+                
+            } catch (error) {
+                console.error(`Error translating chapter ${chapter.title}:`, error);
+                addLog('error', `Failed to translate chapter "${chapter.title}": ${error.message}`);
+                
+                // Continue with next chapter even if one fails
+                completedChapters++;
+                currentChapterIndex++;
+                
+                // Add a small delay before trying next chapter
+                setTimeout(translateNextChapter, 1000);
+            }
+        }
+        
+        // Function to continue translation after WebSocket confirmation
+        window.continueTranslation = function() {
+            completedChapters++;
+            currentChapterIndex++;
+            
+            // Update progress
+            updateProgress({
+                progress_percentage: (completedChapters / totalChapters) * 100,
+                current_chapter: currentChapterIndex < totalChapters ? 
+                    `Preparing next chapter (${completedChapters}/${totalChapters})` : 
+                    `Completed all chapters (${completedChapters}/${totalChapters})`,
+                completed_chapters: completedChapters,
+                total_chapters: totalChapters
+            });
+            
+            // Add a small delay before next chapter to prevent overwhelming the system
+            setTimeout(translateNextChapter, 2000);
+        };
+        
+        // Start the sequential translation
+        translateNextChapter();
     }
 
     function pollTranslationStatus() {
@@ -688,6 +834,12 @@ document.addEventListener('DOMContentLoaded', function() {
             updateToggleViewButton();
             
             addLog('info', `Chapter "${chapter.title}" translation applied and view refreshed`);
+            
+            // If we're in sequential translation mode, continue to next chapter
+            if (typeof window.continueTranslation === 'function') {
+                addLog('info', 'Continuing sequential translation to next chapter...');
+                window.continueTranslation();
+            }
         } else {
             addLog('warn', `Chapter with ID ${chapterId} not found in current data`);
         }

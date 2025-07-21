@@ -455,9 +455,9 @@ func (s *Server) handleGetChapters(c *gin.Context) {
 		}
 	}
 
-	limit := 10
+	limit := len(epubContent.Chapters) // Default to all chapters
 	if limitStr := c.Query("limit"); limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 50 {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
 			limit = l
 		}
 	}
@@ -660,22 +660,50 @@ func (s *Server) handleTranslatePage(c *gin.Context) {
 
 func (s *Server) handleReader(c *gin.Context) {
 	id := c.Param("id")
+	chapter := c.Param("chapter") // Optional chapter parameter
+	mode := c.Param("mode")       // Optional mode parameter: "original", "translated", "side-by-side"
+
 	epubContent, exists := s.epubStorage[id]
 	if !exists {
-		c.HTML(http.StatusNotFound, "error.html", gin.H{
-			"Error": "EPUB not found",
-		})
-		return
+		// Try to load from disk if not in memory
+		loadedEpub, err := s.epubParser.LoadFromDirectory(id)
+		if err != nil {
+			s.logger.Debugf("Failed to load EPUB from directory %s: %v", id, err)
+			c.HTML(http.StatusNotFound, "error.html", gin.H{
+				"Error": "EPUB not found",
+			})
+			return
+		}
+
+		// Store in memory for future requests
+		s.epubStorage[id] = loadedEpub
+		epubContent = loadedEpub
+		s.logger.Debugf("Successfully loaded EPUB %s from disk", id)
+	}
+
+	// Set default mode if not specified
+	if mode == "" {
+		mode = "original"
+	}
+
+	// Validate mode parameter
+	validModes := map[string]bool{
+		"original":     true,
+		"translated":   true,
+		"side-by-side": true,
+	}
+	if !validModes[mode] {
+		mode = "original"
 	}
 
 	var chapterSummaries []gin.H
-	for _, chapter := range epubContent.Chapters {
+	for _, ch := range epubContent.Chapters {
 		chapterSummaries = append(chapterSummaries, gin.H{
-			"ID":           chapter.ID,
-			"Title":        chapter.Title,
-			"WordCount":    chapter.WordCount,
-			"IsTranslated": chapter.IsTranslated,
-			"Order":        chapter.Order,
+			"ID":           ch.ID,
+			"Title":        ch.Title,
+			"WordCount":    ch.WordCount,
+			"IsTranslated": ch.IsTranslated,
+			"Order":        ch.Order,
 		})
 	}
 
@@ -686,6 +714,8 @@ func (s *Server) handleReader(c *gin.Context) {
 		"Chapters":           chapterSummaries,
 		"TotalChapters":      len(epubContent.Chapters),
 		"SupportedLanguages": s.config.Translation.SupportedLangs,
+		"InitialChapter":     chapter, // Pass initial chapter to template
+		"InitialMode":        mode,    // Pass initial mode to template
 	})
 }
 

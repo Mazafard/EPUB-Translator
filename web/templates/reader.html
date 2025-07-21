@@ -22,6 +22,7 @@
         .rtl {
             direction: rtl;
             text-align: right;
+            font-size: 19px !important;
         }
         .ltr {
             direction: ltr;
@@ -62,6 +63,57 @@
         .translation-overlay.translating::after {
             opacity: 1;
         }
+        
+        /* Side-by-side view styles */
+        .side-by-side-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            height: 100%;
+        }
+        
+        .side-by-side-column {
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            overflow-y: auto;
+            background: #fafafa;
+        }
+        
+        .side-by-side-header {
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: #4b5563;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #d1d5db;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .side-by-side-content {
+            line-height: 1.8;
+            font-size: 1rem;
+        }
+        
+        .side-by-side-content.rtl {
+            font-size: 19px !important;
+        }
+        
+        /* Dynamic column sizing based on logs panel visibility */
+        .main-content-area {
+            transition: all 0.3s ease;
+        }
+        
+        /* When logs panel is hidden, expand content area */
+        .logs-hidden .main-content-area {
+            grid-column: span 9; /* Expand from 6 to 9 columns */
+        }
+        
+        /* When logs panel is visible, use normal sizing */
+        .logs-visible .main-content-area {
+            grid-column: span 6; /* Normal 6 columns */
+        }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -89,7 +141,7 @@
     </header>
 
     <div class="container mx-auto px-4 py-4">
-        <div class="grid grid-cols-12 gap-4 h-full">
+        <div id="main-grid" class="grid grid-cols-12 gap-4 h-full logs-hidden">
             <!-- Sidebar Navigation -->
             <div class="col-span-3">
                 <div class="bg-white rounded-lg shadow-lg sidebar">
@@ -133,7 +185,7 @@
             </div>
 
             <!-- Main Content Area -->
-            <div class="col-span-6">
+            <div class="main-content-area">
                 <div class="bg-white rounded-lg shadow-lg content-area">
                     <div class="p-6">
                         <div id="content-header" class="border-b border-gray-200 pb-4 mb-6">
@@ -146,6 +198,9 @@
                                 </button>
                                 <button id="toggle-view-btn" class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm transition-colors">
                                     Show Translated
+                                </button>
+                                <button id="side-by-side-btn" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-sm transition-colors">
+                                    Side by Side
                                 </button>
                                 <span id="translation-status" class="text-sm text-gray-600"></span>
                             </div>
@@ -211,6 +266,8 @@
             {{if $index}},{{end}}"{{$lang}}": "{{$lang}}"
             {{end}}
         };
+        const initialChapter = "{{.InitialChapter}}";
+        const initialMode = "{{.InitialMode}}";
     </script>
     <script src="/static/js/reader.js"></script>
 </body>

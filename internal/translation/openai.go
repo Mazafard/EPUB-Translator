@@ -137,8 +137,10 @@ Ensure the translation is:
 - Clear and easy to understand for native readers
 - Faithful to the tone, style, and voice of the original author
 - Respectful of formatting, punctuation, and paragraph structure
+- If the content contains inappropriate, offensive, or explicit words, replace them with asterisks (*) while maintaining the sentence structure
 
 Do not add explanations or comments. Return only the translated text.
+Do not translate string literals, code snippets, or any other non-translatable content.
 
 Text to translate:
 %s`, sourceLanguage, targetLanguage, chunkText)
@@ -219,7 +221,7 @@ func (c *OpenAIClient) TranslateHTML(htmlContent, sourceLang, targetLang string)
 			sourceLanguage := getLanguageName(sourceLang)
 			targetLanguage := getLanguageName(targetLang)
 
-			prompt := fmt.Sprintf(`Translate the following HTML content from %s to %s. \n\nIMPORTANT INSTRUCTIONS:\n1. Preserve ALL HTML tags, attributes, and structure exactly as they are\n2. Only translate the text content between HTML tags\n3. Do NOT translate HTML tag names, attributes, or values\n4. Maintain the original formatting, spacing, and line breaks\n5. Keep any CSS classes, IDs, and other attributes unchanged\n6. Return only the translated HTML without any additional comments\n\nHTML content:\n%s`, sourceLanguage, targetLanguage, chunkHTML)
+			prompt := fmt.Sprintf(`Translate the following HTML content from %s to %s. \n\nIMPORTANT INSTRUCTIONS:\n1. Preserve ALL HTML tags, attributes, and structure exactly as they are\n2. Only translate the text content between HTML tags\n3. Do NOT translate HTML tag names, attributes, or values\n4. Maintain the original formatting, spacing, and line breaks\n5. Keep any CSS classes, IDs, and other attributes unchanged\n6. If the content contains inappropriate, offensive, or explicit words, replace them with asterisks (*) while maintaining the sentence structure\n7. Return only the translated HTML without any additional comments\n\nHTML content:\n%s`, sourceLanguage, targetLanguage, chunkHTML)
 
 			requestContext := map[string]interface{}{
 				"source_lang":        sourceLang,

@@ -83,15 +83,17 @@ type Reference struct {
 }
 
 type Chapter struct {
-	ID                string `json:"id"`
-	Title             string `json:"title"`
-	FilePath          string `json:"file_path"`
-	RelativePath      string `json:"relative_path"`
-	Content           string `json:"content"`
-	TranslatedContent string `json:"translated_content,omitempty"`
-	Order             int    `json:"order"`
-	WordCount         int    `json:"word_count"`
-	IsTranslated      bool   `json:"is_translated"`
+	ID                    string            `json:"id"`
+	Title                 string            `json:"title"`
+	FilePath              string            `json:"file_path"`
+	RelativePath          string            `json:"relative_path"`
+	Content               string            `json:"content"`
+	TranslatedContent     string            `json:"translated_content,omitempty"`
+	Order                 int               `json:"order"`
+	WordCount             int               `json:"word_count"`
+	IsTranslated          bool              `json:"is_translated"`
+	AvailableTranslations map[string]bool   `json:"available_translations"` // lang -> exists
+	TranslationPaths      map[string]string `json:"translation_paths"`      // lang -> file path
 }
 
 type TranslationProgress struct {
