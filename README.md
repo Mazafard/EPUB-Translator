@@ -266,3 +266,6 @@ For support and questions:
 [![Star History Chart](https://api.star-history.com/svg?repos=Mazafard/EPUB-Translator&type=Date)](https://www.star-history.com/#Mazafard/EPUB-Translator&Date)
 
 Made with ❤️ using Go
+
+## 🌎 Visitors
+[![Visits Badge](https://badges.pufler.dev/visits/mazafard/loan-book)](https://badges.pufler.dev/mazafard/loan-book)
