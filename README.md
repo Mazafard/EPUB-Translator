@@ -268,4 +268,4 @@ For support and questions:
 Made with ❤️ using Go
 
 ## 🌎 Visitors
-[![Visits Badge](https://badges.pufler.dev/visits/mazafard/loan-book)](https://badges.pufler.dev/mazafard/loan-book)
+[![Visits Badge](https://badges.pufler.dev/visits/mazafard/EPUB-Translator)](https://badges.pufler.dev/mazafard/EPUB-Translator)
